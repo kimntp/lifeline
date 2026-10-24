@@ -2,12 +2,15 @@ import * as THREE from "three"; // Core 3D engine
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"; // Load .glb city model
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { ASTRONAUT_CLIPS, AstronautAnimator } from "./astronaut-animations.js";
+import { TerrainGround, advanceGroundedActor, measureFootOffset } from "./terrain-ground.js";
 
 const shared = {
   scene: null,
   renderer: null,
   camera: null,
   city: null,
+  terrainGround: null,
+  playerFootOffset: 0,
   player: null,
   mixer: null,
   actions: null,
@@ -81,8 +84,10 @@ export function loadAstronaut(scene) {
 }
 
 
-function addPreviewFn(fn) {
+function addPreviewFn(fn, priority = 0) {
+  fn.priority = priority;
   _previewFns.push(fn);
+  _previewFns.sort((a, b) => a.priority - b.priority);
 }
 
 function startPreview() {
@@ -214,6 +219,7 @@ async function step2_city() {
         }
         scene.add(gltf.scene);
         shared.city = gltf.scene;
+        shared.terrainGround = new TerrainGround(gltf.scene);
         renderer.render(scene, camera);
         resolve(gltf.scene);
       },
@@ -361,9 +367,7 @@ async function step4_player() {
     player.scale.setScalar(TARGET_HEIGHT / size.y);
   }
 
-  // Recompute AABB after scaling and shift up so feet rest on y=0
-  box.setFromObject(player);
-  player.position.y = -box.min.y * player.scale.y;
+  // Ground placement is measured after the initial native idle pose is applied.
   enableShadowsRecursive(player);
 
   // Walk all meshes: recolor pitch-black materials to skin tone, enable shadows
@@ -378,8 +382,8 @@ async function step4_player() {
     }
   });
 
-  // Place player at origin at eye height, then rotate camera to face them
-  player.position.set(0, 1.8, 0);
+  // Spawn at the terrain surface; step5 aligns the feet after posing the rig.
+  player.position.set(0, shared.terrainGround?.heightAt(0, 0) ?? 0, 0);
   scene.add(player);
   shared.player = player;
 
@@ -396,6 +400,10 @@ async function step4_player() {
 
 async function step5_animations() {
   const animator = new AstronautAnimator(shared.player);
+  animator.mixer.update(0);
+  shared.playerFootOffset = measureFootOffset(shared.player);
+  shared.playerState.groundY = shared.terrainGround?.heightAt(shared.player.position.x, shared.player.position.z) ?? 0;
+  shared.player.position.y = shared.playerState.groundY + shared.playerFootOffset;
   shared.mixer = animator.mixer;
   shared.actions = animator.actions;
   shared.stateMachine = animator;
@@ -414,41 +422,18 @@ async function step5_animations() {
     // Consume the swing flag so it only triggers once per press.
     _loopShared.hit = false;
     mixer.update(delta);
-  });
+  }, 60);
 }
 
 function step6_gravity() {
   flags.gravity = true;
-  const { player } = shared;
-  // Measure distance from player world position to bottom of AABB (foot offset)
-  const _playerFootOffset = (() => {
-    if (player) {
-      const box = new THREE.Box3().setFromObject(player);
-      return player.position.y - box.min.y;
-    }
-    return 0.9;
-  })();
-
-  // Every frame: apply downward acceleration, clamp at ground level
+  // Run after horizontal movement and wall collision, before the camera.
   addPreviewFn((delta) => {
-    const { player, playerState } = shared;
+    const { player, playerState, terrainGround, playerFootOffset } = shared;
     if (!player || !flags.gravity) return;
-
-    // Apply gravity acceleration (28 m/s² — slightly heavier than real for game feel)
-    playerState.velocity.y += -28 * delta;
-    const newY = player.position.y + playerState.velocity.y * delta;
-
-    // Check if new position would put feet below ground (y=0)
-    if (newY - _playerFootOffset <= 0.01) {
-      // Snap to ground and zero out vertical velocity
-      player.position.y = 0 + _playerFootOffset;
-      playerState.velocity.y = 0;
-      playerState.grounded = true;
-    } else {
-      player.position.y = newY;
-      playerState.grounded = false;
-    }
-  });
+    const groundY = terrainGround?.heightAt(player.position.x, player.position.z) ?? 0;
+    advanceGroundedActor(player, playerState, playerFootOffset, groundY, delta);
+  }, 30);
 }
 
 function step7_movement() {
@@ -508,6 +493,7 @@ function step7_movement() {
     // One-shot actions: jump (Space), hit reaction (H), toggle free-cam (F)
     if (keyboard.consumeJustPressed("Space") && playerState.grounded) {
       playerState.velocity.y = 11;
+      playerState.grounded = false;
     }
     if (keyboard.consumeJustPressed("KeyH")) {
       LS.hit = true;
@@ -543,7 +529,7 @@ function step7_movement() {
         14 * delta,
       );
     }
-  });
+  }, 10);
 }
 
 function step8_cameraFollow() {
@@ -629,7 +615,8 @@ function step8_cameraFollow() {
       // Exponential ease (frame-rate independent lerp) for smooth camera movement
       const k = 1 - Math.exp(-14 * delta);
       LS.smoothCamPos.lerp(LS.camPos, k);
-      LS.smoothCamPos.y = Math.max(1, LS.smoothCamPos.y);
+      const cameraGroundY = shared.terrainGround?.heightAt(LS.smoothCamPos.x, LS.smoothCamPos.z) ?? 0;
+      LS.smoothCamPos.y = Math.max(cameraGroundY + 1, LS.smoothCamPos.y);
       LS.smoothCamLook.lerp(LS.camLook, k);
       camera.position.copy(LS.smoothCamPos);
       camera.lookAt(LS.smoothCamLook);
@@ -649,9 +636,10 @@ function step8_cameraFollow() {
         camera.position.addScaledVector(LS.freeRight, -speed);
       if (keyboard && keyboard.right)
         camera.position.addScaledVector(LS.freeRight, speed);
-      camera.position.y = Math.max(1, camera.position.y);
+      const cameraGroundY = shared.terrainGround?.heightAt(camera.position.x, camera.position.z) ?? 0;
+      camera.position.y = Math.max(cameraGroundY + 1, camera.position.y);
     }
-  });
+  }, 40);
 }
 
 function step9_collision() {
@@ -659,6 +647,10 @@ function step9_collision() {
   ray.far = 15;
   const _v = new THREE.Vector3();
   const _prev = new THREE.Vector3();
+  const wallMeshes = [];
+  shared.city?.traverse(node => {
+    if (node.isMesh && !node.userData.walkableTerrain) wallMeshes.push(node);
+  });
 
   // Compute city boundary once: uses City group AABB or falls back to ±100
   const _boundary = new THREE.Box2();
@@ -677,8 +669,11 @@ function step9_collision() {
         maxZ = Math.max(maxZ, box.max.z);
       }
     }
-    // Add 2-unit padding so player isn't clipped right at the edge
-    const pad = 2;
+    // Stay inside the actual terrain edge so characters cannot leave the hills.
+    if (shared.terrainGround) {
+      ({ min: { x: minX, z: minZ }, max: { x: maxX, z: maxZ } } = shared.terrainGround.bounds);
+    }
+    const pad = shared.terrainGround ? 0 : 2;
     _boundary.min.set(minX - pad, minZ - pad);
     _boundary.max.set(maxX + pad, maxZ + pad);
   })();
@@ -700,7 +695,7 @@ function step9_collision() {
         const dir = _v.clone().normalize();
         _prev.set(prevPos.x, player.position.y, prevPos.z);
         ray.set(_prev, dir);
-        const hits = ray.intersectObject(scene, true);
+        const hits = ray.intersectObjects(wallMeshes, false);
         for (const hit of hits) {
           let o = hit.object;
           let exclude = false;
@@ -713,7 +708,7 @@ function step9_collision() {
             o = o.parent;
           }
           // Push player back so they stop at wall surface (accounting for player radius)
-          if (!exclude && hit.distance < moveDist + radius) {
+          if (!exclude && !hit.object.userData.walkableTerrain && hit.distance < moveDist + radius) {
             const allowed = Math.max(0, hit.distance - radius);
             player.position.x = prevPos.x + dir.x * allowed;
             player.position.z = prevPos.z + dir.z * allowed;
@@ -735,7 +730,7 @@ function step9_collision() {
 
     // Store current position as previous for next frame's collision ray
     _loopShared.prevPlayerPos = player.position.clone();
-  });
+  }, 20);
 }
 
 async function step10_enemies() {
@@ -751,6 +746,7 @@ async function step10_enemies() {
   function cacheBuildingSpheres(scene) {
     if (_buildingSpheres.length > 0) return;
     scene.traverse((c) => {
+      if (c.userData.walkableTerrain) return;
       if (c.isMesh && c.geometry && c.parent?.name !== "City") return;
       if (c.isMesh && c.geometry) {
         const box = new THREE.Box3().setFromObject(c);
@@ -830,6 +826,14 @@ async function step10_enemies() {
           );
         }
       }
+      const bounds = shared.terrainGround?.bounds;
+      if (bounds) {
+        for (const point of pts) {
+          point.x = THREE.MathUtils.clamp(point.x, bounds.min.x + 0.5, bounds.max.x - 0.5);
+          point.z = THREE.MathUtils.clamp(point.z, bounds.min.z + 0.5, bounds.max.z - 0.5);
+          point.y = shared.terrainGround.heightAt(point.x, point.z);
+        }
+      }
       return pts;
     }
 
@@ -847,7 +851,7 @@ async function step10_enemies() {
       const TARGET = 1.7;
       if (size.y > 0.01) model.scale.setScalar(TARGET / size.y);
       box.setFromObject(model);
-      model.position.y = -box.min.y * model.scale.y;
+      this.footOffset = model.position.y - box.min.y;
       // Walk meshes: enable shadows, assign a random hue for visual variety
       model.traverse((c) => {
         if (c.isMesh) {
@@ -870,7 +874,7 @@ async function step10_enemies() {
 
       this.mesh = model;
       this.mesh.position.copy(this.position);
-      this.mesh.position.y = 0;
+      this.snapToTerrain();
       this.scene.add(this.mesh);
 
       const mixer = new THREE.AnimationMixer(model);
@@ -911,6 +915,9 @@ async function step10_enemies() {
       } catch (_) {}
 
       this._setAnim("walk");
+      mixer.update(0);
+      this.footOffset = measureFootOffset(model);
+      this.snapToTerrain();
     }
 
     // Crossfade animation weight to `name` (walk or idle)
@@ -944,6 +951,8 @@ async function step10_enemies() {
           pushDir.normalize().multiplyScalar(2.5);
           this.mesh.position.x += pushDir.x;
           this.mesh.position.z += pushDir.z;
+          this._stayInBounds();
+          this.snapToTerrain();
         }
       }
       if (this.health <= 0) {
@@ -1059,7 +1068,7 @@ async function step10_enemies() {
         pos.z += dir.z * speed * dt;
 
         // Keep minimum distance from player (don't overlap/push them)
-        const toPlayerDist = this._toTarget.copy(playerPos).sub(pos).length();
+        const toPlayerDist = Math.hypot(playerPos.x - pos.x, playerPos.z - pos.z);
         if (toPlayerDist < 1.5) {
           pos.x = prevX;
           pos.z = prevZ;
@@ -1094,16 +1103,22 @@ async function step10_enemies() {
       this.mixer.update(dt);
     }
 
-    // Keep enemy inside ±100 world bounds so they don't walk into the void
+    snapToTerrain() {
+      if (!this.mesh) return;
+      const groundY = shared.terrainGround?.heightAt(this.mesh.position.x, this.mesh.position.z) ?? 0;
+      this.mesh.position.y = groundY + this.footOffset;
+    }
+
+    // Keep enemies within the terrain's actual footprint.
     _stayInBounds() {
-      const limit = 100;
+      const bounds = shared.terrainGround?.bounds;
       this.mesh.position.x = Math.max(
-        -limit,
-        Math.min(limit, this.mesh.position.x),
+        (bounds?.min.x ?? -100) + 0.5,
+        Math.min((bounds?.max.x ?? 100) - 0.5, this.mesh.position.x),
       );
       this.mesh.position.z = Math.max(
-        -limit,
-        Math.min(limit, this.mesh.position.z),
+        (bounds?.min.z ?? -100) + 0.5,
+        Math.min((bounds?.max.z ?? 100) - 0.5, this.mesh.position.z),
       );
     }
   }
@@ -1146,8 +1161,12 @@ async function step10_enemies() {
     const playerPos = player ? player.position : new THREE.Vector3(0, 0, 0);
     for (const e of enemies) {
       e.update(delta, playerPos);
+      if (e.mesh) {
+        e._stayInBounds();
+        e.snapToTerrain();
+      }
     }
-  });
+  }, 50);
 }
 
 function step11_enemyCombat() {
@@ -1214,7 +1233,7 @@ function step11_enemyCombat() {
       _mouseClicked = false;
       doAttack();
     }
-  });
+  }, 55);
 }
 async function main() {
   // step 1
