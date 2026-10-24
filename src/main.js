@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"; // Load .
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { ASTRONAUT_CLIPS, AstronautAnimator } from "./astronaut-animations.js";
 import { TerrainGround, advanceGroundedActor, measureFootOffset } from "./terrain-ground.js";
+import { createTerrainSurround } from "./terrain-surround.js";
 
 const shared = {
   scene: null,
@@ -128,8 +129,7 @@ function enableShadowsRecursive(root) {
 
 function step1_sceneSetup() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  scene.fog = new THREE.Fog(0x87ceeb, 80, 400);
+  scene.background = new THREE.Color(0x03040a);
 
   const canvas = document.querySelector("#game-canvas");
   const renderer = new THREE.WebGLRenderer({
@@ -197,6 +197,17 @@ function step1_sceneSetup() {
   shared.scene = scene;
   shared.renderer = renderer;
   shared.camera = camera;
+  new THREE.TextureLoader().load(
+    "/assets/space-panorama.png",
+    (texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.mapping = THREE.EquirectangularReflectionMapping;
+      scene.background = texture;
+      renderer.render(scene, camera);
+    },
+    undefined,
+    (error) => console.warn("[background] Space panorama failed to load:", error),
+  );
   renderer.render(scene, camera);
 }
 
@@ -220,6 +231,10 @@ async function step2_city() {
         scene.add(gltf.scene);
         shared.city = gltf.scene;
         shared.terrainGround = new TerrainGround(gltf.scene);
+        scene.add(createTerrainSurround(gltf.scene, shared.terrainGround));
+        scene.getObjectByName("GroundSafetyNet").visible = false;
+        // Hide the distant tile limit while retaining the surrounding stars.
+        scene.fog = new THREE.Fog(0x03040a, 220, 520);
         renderer.render(scene, camera);
         resolve(gltf.scene);
       },

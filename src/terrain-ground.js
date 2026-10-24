@@ -24,7 +24,8 @@ export class TerrainGround {
         c.fromBufferAttribute(positions, index ? index.getX(i + 2) : i + 2).applyMatrix4(mesh.matrixWorld);
         const denominator = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
         if (Math.abs(denominator) < 1e-10) continue;
-        const triangle = [a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, denominator];
+        const triangle = [a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, denominator,
+          mesh, index ? index.getX(i) : i, index ? index.getX(i + 1) : i + 1, index ? index.getX(i + 2) : i + 2];
         const minX = this.cellX(Math.min(a.x, b.x, c.x));
         const maxX = this.cellX(Math.max(a.x, b.x, c.x));
         const minZ = this.cellZ(Math.min(a.z, b.z, c.z));
@@ -45,17 +46,26 @@ export class TerrainGround {
   }
 
   heightAt(x, z) {
-    if (x < this.bounds.min.x || x > this.bounds.max.x || z < this.bounds.min.z || z > this.bounds.max.z) return 0;
+    return this.surfaceAt(x, z)?.height ?? 0;
+  }
+
+  surfaceAt(x, z) {
+    if (x < this.bounds.min.x || x > this.bounds.max.x || z < this.bounds.min.z || z > this.bounds.max.z) return null;
     let height = -Infinity;
+    let surface = null;
     for (const t of this.bins[this.cellZ(z) * this.cells + this.cellX(x)]) {
       const u = ((t[5] - t[8]) * (x - t[6]) + (t[6] - t[3]) * (z - t[8])) / t[9];
       const v = ((t[8] - t[2]) * (x - t[6]) + (t[0] - t[6]) * (z - t[8])) / t[9];
       const w = 1 - u - v;
       if (u >= -1e-7 && v >= -1e-7 && w >= -1e-7) {
-        height = Math.max(height, u * t[1] + v * t[4] + w * t[7]);
+        const y = u * t[1] + v * t[4] + w * t[7];
+        if (y > height) {
+          height = y;
+          surface = { height, triangle: t, weights: [u, v, w] };
+        }
       }
     }
-    return Number.isFinite(height) ? height : 0;
+    return surface;
   }
 }
 

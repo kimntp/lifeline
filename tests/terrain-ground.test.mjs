@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import * as THREE from "three";
 import { TerrainGround, advanceGroundedActor, measureFootOffset } from "../src/terrain-ground.js";
+import { createTerrainSurround } from "../src/terrain-surround.js";
 
 // Decode the real GLB's positions, indices and node transforms without loading
 // browser-only textures. Compare the height index to Three.js ray intersections.
@@ -131,4 +132,43 @@ test("scaled character feet are placed on terrain without applying scale twice",
     const box = new THREE.Box3().setFromObject(actor, true);
     assert.ok(Math.abs(box.min.y - groundY) < 1e-8);
   }
+});
+
+test("terrain horizon matches the real model border and extends past the fog limit", () => {
+  const surround = createTerrainSurround(terrain, ground);
+  assert.equal(surround.children.length, 48);
+  surround.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(surround);
+  assert.ok(bounds.min.x < -650 && bounds.max.x > 650);
+  assert.ok(bounds.min.z < -650 && bounds.max.z > 650);
+  const position = surround.children[0].geometry.attributes.position;
+  const sourceEdges = [];
+  const actual = new THREE.Vector3();
+  terrain.traverse(mesh => {
+    if (!mesh.isMesh) return;
+    const vertices = mesh.geometry.attributes.position;
+    for (let i = 0; i < vertices.count; i++) {
+      actual.fromBufferAttribute(vertices, i).applyMatrix4(mesh.matrixWorld);
+      if (Math.abs(actual.x - ground.bounds.min.x) < 0.001 || Math.abs(actual.x - ground.bounds.max.x) < 0.001
+        || Math.abs(actual.z - ground.bounds.min.z) < 0.001 || Math.abs(actual.z - ground.bounds.max.z) < 0.001) {
+        sourceEdges.push(actual.clone());
+      }
+    }
+  });
+  const border = [];
+  const key = p => `${p.x.toFixed(3)},${p.z.toFixed(3)}`;
+  for (let i = 0; i < position.count; i++) {
+    actual.fromBufferAttribute(position, i);
+    if (Math.abs(actual.x - ground.bounds.min.x) < 0.001 || Math.abs(actual.x - ground.bounds.max.x) < 0.001
+      || Math.abs(actual.z - ground.bounds.min.z) < 0.001 || Math.abs(actual.z - ground.bounds.max.z) < 0.001) {
+      border.push(actual.clone());
+    }
+  }
+  assert.ok(sourceEdges.length > 1000);
+  for (const vertex of sourceEdges) {
+    assert.ok(border.some(point => Math.abs(point.x - vertex.x) < 0.0002
+      && Math.abs(point.z - vertex.z) < 0.0002 && Math.abs(point.y - vertex.y) < 0.002),
+    `Crack at ${key(vertex)}`);
+  }
+  assert.ok(surround.children[0].geometry.index.count / 3 < 15000, "Distant tiles use reduced detail");
 });
