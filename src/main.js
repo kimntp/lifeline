@@ -1,6 +1,7 @@
 import * as THREE from "three"; // Core 3D engine
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"; // Load .glb city model
-import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js"; // Load .fbx character models + animations
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { ASTRONAUT_CLIPS, AstronautAnimator } from "./astronaut-animations.js";
 
 const shared = {
   scene: null,
@@ -11,11 +12,11 @@ const shared = {
   mixer: null,
   actions: null,
   keyboard: null,
-  look: { yaw: 0, pitch: -0.15, sensitivity: 0.0022 },
+  look: { yaw: 0, pitch: 0, sensitivity: 0.0022 },
   playerState: { velocity: new THREE.Vector3(), grounded: true, groundY: 0 },
   orbit: { theta: 0, phi: 0.4, distance: 50 },
   stateMachine: null,
-  cameraDistance: 6,
+  cameraDistance: 8,
 };
 
 const flags = {
@@ -42,6 +43,43 @@ const _loopShared = {
   cameraMode: "third-person",
   hit: false,
 };
+
+
+
+export function loadAstronaut(scene) {
+  const loader = new FBXLoader();
+
+  loader.load(
+    "/assets/Astronauta.fbx",
+    (astronaut) => {
+      astronaut.scale.setScalar(0.01);
+      scene.add(astronaut);
+
+      console.log("Astronaut loaded!");
+
+      console.log(
+        "Animations found:",
+        astronaut.animations.length
+      );
+
+      astronaut.animations.forEach((clip, index) => {
+        console.log(
+          index,
+          clip.name,
+          clip.duration
+        );
+      });
+
+      const animator = new AstronautAnimator(astronaut);
+      addPreviewFn((delta) => animator.mixer.update(delta));
+    },
+    undefined,
+    (error) => {
+      console.error("Failed to load astronaut:", error);
+    }
+  );
+}
+
 
 function addPreviewFn(fn) {
   _previewFns.push(fn);
@@ -168,6 +206,12 @@ async function step2_city() {
       (gltf) => {
         enableShadowsRecursive(gltf.scene);
         gltf.scene.name = "City";
+        gltf.scene.scale.setScalar(100);
+        // Align the scaled city's base with the game's ground at y=0.
+        const cityBounds = new THREE.Box3().setFromObject(gltf.scene);
+        if (Number.isFinite(cityBounds.min.y)) {
+          gltf.scene.position.y -= cityBounds.min.y;
+        }
         scene.add(gltf.scene);
         shared.city = gltf.scene;
         renderer.render(scene, camera);
@@ -249,7 +293,7 @@ function step3_cityMovement() {
       look.yaw -= e.movementX * look.sensitivity;
       look.pitch -= e.movementY * look.sensitivity;
       const lim = Math.PI / 2 - 0.05;
-      look.pitch = Math.max(-lim, Math.min(lim, look.pitch));
+      look.pitch = Math.max(0, Math.min(lim, look.pitch));
     } else {
       // Free-orbit mode: spherical coordinates around (0,0,0) for city preview
       shared.orbit.theta -= e.movementX * 0.003;
@@ -297,9 +341,15 @@ async function step4_player() {
   const { scene, renderer, camera } = shared;
   const fbxLoader = new FBXLoader();
 
-  // Load Player.fbx via promise wrapper for clean async/await
+  // Load Astronauta.fbx via promise wrapper for clean async/await
   const player = await new Promise((resolve, reject) => {
-    fbxLoader.load("/assets/Player.fbx", resolve, undefined, reject);
+    fbxLoader.load("/assets/Astronauta.fbx", resolve, undefined, reject);
+  });
+  console.log("Astronaut loaded!", {
+    animations: player.animations.map((clip) => ({
+      name: clip.name,
+      duration: clip.duration,
+    })),
   });
   player.name = "Player";
 
@@ -344,129 +394,24 @@ async function step4_player() {
   return player;
 }
 
-class AnimationStateMachine {
-  // Start playing idle immediately on creation
-  constructor(actions, mixer) {
-    this.actions = actions;
-    this.mixer = mixer;
-    this.current = "idle";
-    this.fadeDuration = 0.18;
-    if (actions.idle) {
-      actions.idle.setEffectiveWeight(1);
-      actions.idle.play();
-    }
-  }
-  // Crossfade from current animation to `next` — returns false if blocked or already active
-  setState(next, { force = false, fade = this.fadeDuration } = {}) {
-    if (!this.actions[next]) return false;
-    if (next === this.current && !force) return false;
-    const from = this.actions[this.current];
-    const to = this.actions[next];
-    if (from) from.crossFadeTo(to, fade, false);
-    // Ensure target animation is fully weighted and playing
-    to.setEffectiveWeight(1);
-    to.enabled = true;
-    to.play();
-    this.current = next;
-    return true;
-  }
-  // Each frame: decide idle/walk/run/jump/fall/hit based on player state
-  update({ isMoving, isSprinting, isGrounded, verticalVelocity, hit }) {
-    // Hit reaction has highest priority — lock state machine until animation finishes
-    if (hit && this.actions.hit && this.current !== "hit") {
-      this.setState("hit", { force: true });
-      this.locked = true;
-      const a = this.actions.hit;
-      // Calculate unlock delay from clip duration + fade buffer + margin
-      const dur = (a.getClip().duration || 0.6) + this.fadeDuration + 0.1;
-      clearTimeout(this._hitTimer);
-      this._hitTimer = setTimeout(() => {
-        this.locked = false;
-        a.reset();
-      }, dur * 1000);
-      return;
-    }
-    if (this.locked) return;
-    // Airborne: pick jump (rising) or fall (descending)
-    if (!isGrounded) {
-      this.setState(verticalVelocity > 0.1 ? "jump" : "fall");
-      return;
-    }
-    // Grounded: idle if stationary, run if sprinting, else walk
-    if (!isMoving) this.setState("idle");
-    else if (isSprinting) this.setState("run");
-    else this.setState("walk");
-  }
-}
-
 async function step5_animations() {
-  const { player } = shared;
-  const fbxLoader = new FBXLoader();
-
-  const SOURCES = {
-    idle: ["/assets/Player_Idle.fbx"],
-    walk: ["/assets/Player_Walk.fbx"],
-    run: ["/assets/Player_Run.fbx"],
-    jump: ["/assets/Player_Jumping_Up.fbx"],
-    fall: ["/assets/Player_Jumping_Down.fbx"],
-    hit: ["/assets/Player_hit.fbx"],
-  };
-
-  const mixer = new THREE.AnimationMixer(player);
-  const actions = {};
-
-  // Load each animation FBX, strip root-motion position tracks, create mixer actions
-  for (const [name, urls] of Object.entries(SOURCES)) {
-    for (const url of urls) {
-      try {
-        const root = await new Promise((res, rej) => {
-          fbxLoader.load(url, res, undefined, rej);
-        });
-        if (!root.animations || root.animations.length === 0) continue;
-        const clip = root.animations[0];
-        // Remove .position tracks to prevent root motion from moving the player
-        clip.tracks = clip.tracks.filter((t) => !t.name.endsWith(".position"));
-        const a = mixer.clipAction(clip);
-        a.name = name;
-        // Hit plays once and holds last frame; all others loop infinitely
-        if (name === "hit") {
-          a.setLoop(THREE.LoopOnce, 1);
-          a.clampWhenFinished = true;
-        } else {
-          a.setLoop(THREE.LoopRepeat, Infinity);
-        }
-        a.enabled = true;
-        a.setEffectiveWeight(0);
-        actions[name] = a;
-        break;
-      } catch (_) {}
-    }
-  }
-
-  if (actions.idle) {
-    actions.idle.setEffectiveWeight(1);
-    actions.idle.play();
-  }
-  shared.mixer = mixer;
-  shared.actions = actions;
+  const animator = new AstronautAnimator(shared.player);
+  shared.mixer = animator.mixer;
+  shared.actions = animator.actions;
+  shared.stateMachine = animator;
 
   // Every frame: feed player state into the state machine to pick current animation
   addPreviewFn((delta) => {
-    const { player, mixer, actions, keyboard, playerState } = shared;
+    const { mixer, actions, keyboard, playerState } = shared;
     if (!mixer || !actions) return;
-    // Lazy-init the state machine on first frame (after all actions are registered)
-    if (!shared.stateMachine) {
-      shared.stateMachine = new AnimationStateMachine(actions, mixer);
-    }
     shared.stateMachine.update({
       // Only consider movement flags if movement step is enabled
       isMoving: flags.movement && _loopShared.move.lengthSq() > 0.0001,
       isSprinting: keyboard ? keyboard.sprint : false,
       isGrounded: playerState.grounded,
-      verticalVelocity: playerState.velocity.y,
       hit: _loopShared.hit,
     });
-    // Consume hit flag so it only triggers one hit animation per press
+    // Consume the swing flag so it only triggers once per press.
     _loopShared.hit = false;
     mixer.update(delta);
   });
@@ -612,20 +557,44 @@ function step8_cameraFollow() {
     <div class="overlay-inner">
       <h1>Click to Play</h1>
       <p><strong>W A S D</strong> — move  <strong>Shift</strong> — sprint</p>
-      <p><strong>Space</strong> — jump  <strong>H</strong> — hit reaction</p>
+      <p><strong>Space</strong> — jump  <strong>H</strong> — mining swing</p>
       <p><strong>E</strong> — attack enemy  <strong>F</strong> — toggle free-fly camera</p>
       <p><strong>Mouse</strong> — look  <strong>Esc</strong> — release mouse</p>
     </div>`;
   document.body.appendChild(overlay);
-  overlay.addEventListener("click", () =>
-    renderer.domElement.requestPointerLock(),
-  );
+  const animationPanel = document.createElement("div");
+  animationPanel.id = "astronaut-animations";
+  const label = document.createElement("label");
+  label.htmlFor = "astronaut-animation";
+  label.textContent = "Astronaut animation";
+  const select = document.createElement("select");
+  select.id = "astronaut-animation";
+  select.add(new Option("Gameplay (automatic)", ""));
+  for (const name of ASTRONAUT_CLIPS) {
+    select.add(new Option(name, name));
+  }
+  const hint = document.createElement("p");
+  hint.textContent = "Select a clip to preview. Click the scene to return to gameplay.";
+  animationPanel.append(label, select, hint);
+  document.body.appendChild(animationPanel);
+  select.addEventListener("change", () => {
+    shared.stateMachine.setPreview(select.value);
+    overlay.classList.toggle("animation-preview", Boolean(select.value));
+  });
+  overlay.addEventListener("click", () => {
+    shared.stateMachine.setPreview("");
+    select.value = "";
+    overlay.classList.remove("animation-preview");
+    renderer.domElement.requestPointerLock();
+  });
   // Show/hide overlay whenever pointer lock state changes
   document.addEventListener("pointerlockchange", () => {
     if (document.pointerLockElement === renderer.domElement) {
       overlay.style.display = "none";
+      animationPanel.hidden = true;
     } else if (flags.cameraFollow) {
       overlay.style.display = "flex";
+      animationPanel.hidden = false;
     }
   });
 
@@ -660,6 +629,7 @@ function step8_cameraFollow() {
       // Exponential ease (frame-rate independent lerp) for smooth camera movement
       const k = 1 - Math.exp(-14 * delta);
       LS.smoothCamPos.lerp(LS.camPos, k);
+      LS.smoothCamPos.y = Math.max(1, LS.smoothCamPos.y);
       LS.smoothCamLook.lerp(LS.camLook, k);
       camera.position.copy(LS.smoothCamPos);
       camera.lookAt(LS.smoothCamLook);
@@ -679,6 +649,7 @@ function step8_cameraFollow() {
         camera.position.addScaledVector(LS.freeRight, -speed);
       if (keyboard && keyboard.right)
         camera.position.addScaledVector(LS.freeRight, speed);
+      camera.position.y = Math.max(1, camera.position.y);
     }
   });
 }

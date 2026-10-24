@@ -76,6 +76,42 @@ body {
 }
 
 /* ---------- STEP LABELS (demo walkthrough) ---------- */
+#astronaut-animations {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 11;
+  max-width: min(340px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 8px;
+  color: #fff;
+  background: rgba(10, 10, 20, 0.9);
+}
+
+#astronaut-animations label,
+#astronaut-animations select {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+#astronaut-animations select {
+  padding: 8px;
+}
+
+#astronaut-animations p {
+  font-size: 0.85rem;
+}
+
+#click-to-play.animation-preview {
+  background: transparent;
+  backdrop-filter: none;
+}
+
+#click-to-play.animation-preview .overlay-inner {
+  display: none;
+}
+
 .step-label {
   position: fixed;
   bottom: 40px;
