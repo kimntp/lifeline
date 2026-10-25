@@ -1,4 +1,6 @@
 import * as THREE from "three"; // Core 3D engine
+import { registerNarrationAudio } from "./narration-audio.js";
+import { createOrangeBotOverlay } from "./orangebot-overlay.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"; // Load .glb city model
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { ASTRONAUT_CLIPS, AstronautAnimator } from "./astronaut-animations.js";
@@ -452,6 +454,33 @@ function step6_gravity() {
 }
 
 function step7_movement() {
+  const intro = registerNarrationAudio(new Audio(`${import.meta.env.BASE_URL}assets/audio/Apollo%20Intro.mp3`));
+  intro.preload = "auto";
+  let introStarted = false;
+  let introPending = false;
+
+  function playIntroOnMovement(code, keys) {
+    const movementKeys = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"];
+    if (introStarted || introPending || !movementKeys.includes(code)) return;
+    if (!shared.player || !flags.movement || _loopShared.cameraMode !== "third-person") return;
+    if (document.pointerLockElement !== shared.renderer.domElement) return;
+    const forward = Number(Boolean(keys.KeyW || keys.ArrowUp)) - Number(Boolean(keys.KeyS || keys.ArrowDown));
+    const sideways = Number(Boolean(keys.KeyD || keys.ArrowRight)) - Number(Boolean(keys.KeyA || keys.ArrowLeft));
+    if (!forward && !sideways) return;
+
+    // Start in the key event so browser autoplay rules allow narration.
+    introPending = true;
+    intro.play().then(() => {
+      introStarted = true;
+      introPending = false;
+    }).catch((error) => {
+      introPending = false;
+      // A blocked attempt may retry on the next movement key press.
+      if (error.name !== "NotAllowedError") introStarted = true;
+      console.warn("Apollo intro could not play:", error);
+    });
+  }
+
   // Captures held keys (continuous) + just-pressed keys (single-fire) + blur safety
   // Distinguishes held (keys map) from freshly pressed (justPressed Set) for jump/hit one-shots
   class KeyboardInput {
@@ -461,6 +490,7 @@ function step7_movement() {
       this._kd = (e) => {
         if (!this.keys[e.code]) this.justPressed.add(e.code);
         this.keys[e.code] = true;
+        playIntroOnMovement(e.code, this.keys);
       };
       this._ku = (e) => {
         this.keys[e.code] = false;
@@ -1254,6 +1284,8 @@ async function main() {
   // step 1
   await step1_sceneSetup();
   startPreview();
+  createOrangeBotOverlay().then((render) => addPreviewFn(render, 100))
+    .catch((error) => console.error("OrangeBOT could not load:", error));
   // step 2
   await step2_city();
 
