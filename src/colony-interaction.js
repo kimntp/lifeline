@@ -1,8 +1,8 @@
+import { dialogueSession } from "./dialogue-session.js";
 import { GARDEN_COLONY, nearestGardenWorker } from "./garden-colony.js";
 import { GardenMission, GROWING_CONDITIONS, nearestSamplePlot, surveyDialogue } from "./garden-mission.js";
 
-export function createColonyInteraction(colony, { mission = new GardenMission(), onProgress, onSample, onDeposit,
-  getBaseTarget = () => null, getFootOffset = () => 0 } = {}) {
+export function createColonyInteraction(colony) {
   const root = document.createElement("div");
   root.id = "colony-interface";
   root.hidden = true;
@@ -27,7 +27,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
     </aside>
     <p id="apollo-radio" class="apollo-radio" role="status" aria-live="polite" hidden></p>
     <p id="colony-talk-prompt" class="colony-talk-prompt" hidden></p>
-    <section id="colony-dialogue" class="colony-dialogue" aria-label="Peaceful alien conversation" hidden>
+    <section id="colony-dialogue" class="colony-dialogue" aria-label="Alien conversation" hidden>
       <p id="colony-speaker" class="colony-eyebrow"></p>
       <p id="colony-dialogue-text" aria-live="polite"></p>
       <p class="colony-dialogue-hint">E — continue · Walk away to leave</p>
@@ -67,6 +67,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
   function close() {
     if (conversation) conversation.talking = false;
     conversation = null;
+    channel.end(conversationOwner);
     dialogue.hidden = true;
   }
   function showLine() {
@@ -108,14 +109,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
           line++;
           if (line >= lines.length) close();
           else showLine();
-        } else if (deposit) {
-          onDeposit?.();
-        } else if (sample) {
-          if (mission.collect(sample.type)) {
-            onSample?.(sample.type);
-            onProgress?.();
-          }
-        } else if (worker && mission.phase !== "depositing") {
+        } else if (worker) {
           conversation = worker; line = 0;
           lines = surveyDialogue(mission, worker.profile, colony.site);
           worker.talking = true;
@@ -123,13 +117,8 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
           showLine();
         }
       }
-      const nextSample = nearestSamplePlot(colony, player.position, mission, getFootOffset());
-      prompt.hidden = Boolean(conversation) || mission.phase === "depositing" || (!deposit && !nextSample && !worker);
-      prompt.textContent = deposit ? "E — Deposit samples at base"
-        : nextSample ? `E — ${nextSample.type === "soil" ? "Collect soil sample" : `Take ${nextSample.type} sample`}`
-        : worker ? `E — ${mission.explained && !mission.waterKnown ? "Ask about water" : "Talk"} · ${worker.profile.name}` : "";
-      renderMission();
-      element("apollo-radio").hidden = objectivesOpen || Boolean(conversation) || !mission.explained;
+      prompt.hidden = Boolean(conversation) || !worker;
+      if (worker) prompt.textContent = `E — Talk to ${worker.profile.name}`;
     },
   };
 }

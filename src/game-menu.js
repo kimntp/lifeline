@@ -1,3 +1,5 @@
+import { setNarrationPaused, isNarrationMuted, toggleNarrationMute } from "./narration-audio.js";
+
 export class GameSession {
   ready = false;
   started = false;
@@ -27,13 +29,14 @@ export class GameSession {
   home() { this.screen = "home"; }
 }
 
-export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, onPreview, onMoveBase, onSetSpawn, onMoveColony }) {
+export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, onPreview, onMoveBase, onSetSpawn, onMoveColony, onIceBase }) {
   const root = document.createElement("div");
   root.id = "game-interface";
   root.innerHTML = `
     <button id="pause-button" class="pause-button" type="button" aria-label="Pause game" hidden>
       <span aria-hidden="true">Ⅱ</span> Pause <kbd>P</kbd>
     </button>
+    <button id="mute-button" class="pause-button mute-button" type="button" aria-pressed="false" hidden>Mute audio</button>
     <main id="game-menu" class="menu-shell" role="dialog" aria-modal="true" aria-labelledby="menu-title">
       <video id="home-video" class="home-video" autoplay muted loop playsinline
         preload="metadata" poster="/assets/space-panorama.png" aria-hidden="true" hidden>
@@ -49,7 +52,9 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
           <button id="instructions-button" class="menu-button" type="button">Instructions</button>
           <button id="move-base-button" class="menu-button" type="button" hidden>Move base here</button>
           <button id="move-colony-button" class="menu-button" type="button" hidden>Move colony here</button>
+          <button id="ice-base-button" class="menu-button" type="button" hidden>Ice base here</button>
           <button id="set-spawn-button" class="menu-button" type="button" hidden>Set spawn here</button>
+          <button id="menu-mute-button" class="menu-button" type="button" aria-pressed="false" hidden>Mute audio</button>
           <button id="home-button" class="menu-button quiet" type="button" hidden>Home screen</button>
         </div>
         <div id="instructions-panel" hidden>
@@ -62,6 +67,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
             <div><dt>Q</dt><dd>Open / close objectives</dd></div>
             <div><dt>H</dt><dd>Mining swing</dd></div>
             <div><dt>F</dt><dd>Toggle free camera</dd></div>
+            <div><dt>M</dt><dd>Mute / unmute audio</dd></div>
             <div><dt>P / Esc</dt><dd>Pause and release mouse</dd></div>
           </dl>
         </div>
@@ -92,10 +98,24 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
   video.addEventListener("error", () => { video.hidden = true; });
   const select = element("astronaut-animation");
   for (const clip of clips) select.add(new Option(clip, clip));
+  function updateMuteButtons() {
+    const muted = isNarrationMuted();
+    for (const id of ["mute-button", "menu-mute-button"]) {
+      element(id).textContent = muted ? "Unmute audio" : "Mute audio";
+      element(id).setAttribute("aria-pressed", String(muted));
+    }
+  }
+  function toggleMute() {
+    toggleNarrationMute();
+    updateMuteButtons();
+  }
+  element("mute-button").addEventListener("click", toggleMute);
+  element("menu-mute-button").addEventListener("click", toggleMute);
   element("pause-button").addEventListener("click", onPause);
   element("play-button").addEventListener("click", onPlay);
   element("move-base-button").addEventListener("click", onMoveBase);
   element("move-colony-button").addEventListener("click", onMoveColony);
+  element("ice-base-button").addEventListener("click", onIceBase);
   element("set-spawn-button").addEventListener("click", onSetSpawn);
   for (const [id, target] of [["instructions-button", "instructions"],
     ["home-button", "home"], ["menu-back", "back"]]) {
@@ -125,6 +145,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
   });
 
   return {
+    toggleMute,
     get transitioning() { return Boolean(activeTransition); },
     cancelTransition,
     async transitionToGame(onCovered) {
@@ -154,6 +175,8 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
     },
     status(message) { element("menu-status").textContent = message; },
     render({ focus = true } = {}) {
+      setNarrationPaused(session.paused);
+      updateMuteButtons();
       const screen = session.screen;
       const home = screen === "home", paused = screen === "paused";
       video.hidden = !home || Boolean(video.error);
@@ -167,7 +190,9 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
       element("game-menu").classList.toggle("home-screen", home);
       element("game-menu").classList.toggle("preview-screen", animations);
       element("pause-button").hidden = session.paused;
-      element("home-logo").hidden = !home;
+      element("mute-button").hidden = session.paused;
+      element("menu-mute-button").hidden = !paused;
+      element("logo-placeholder").hidden = !home;
       element("menu-eyebrow").textContent = home ? "" : "LIFELINE";
       element("menu-eyebrow").hidden = home;
       element("menu-title").textContent = home ? "Lifeline" : paused ? "Paused" : instructions ? "Instructions" : "Animations";
@@ -180,6 +205,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
       element("move-base-button").hidden = !paused;
       element("move-colony-button").hidden = !paused;
       element("set-spawn-button").hidden = !paused;
+      element("ice-base-button").hidden = !paused;
       element("home-button").hidden = !paused;
       element("instructions-panel").hidden = !instructions;
       element("animation-menu-panel").hidden = !animations;

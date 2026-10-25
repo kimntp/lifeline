@@ -2,7 +2,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "transcribe:intro": "node scripts/transcribe-intro.mjs"
   },
   "dependencies": {
     "three": "^0.184.0"
