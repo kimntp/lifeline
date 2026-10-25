@@ -4,6 +4,8 @@ import test from "node:test";
 import * as THREE from "three";
 import { TerrainGround, advanceGroundedActor, measureFootOffset } from "../src/terrain-ground.js";
 import { createTerrainSurround } from "../src/terrain-surround.js";
+import { findBaseSite } from "../src/space-base.js";
+import { findColonySite } from "../src/garden-colony.js";
 
 // Decode the real GLB's positions, indices and node transforms without loading
 // browser-only textures. Compare the height index to Three.js ray intersections.
@@ -76,17 +78,70 @@ test("real scaled terrain heights match downward raycasts across hills and seams
   assert.equal(ground.heightAt(1000, 1000), 0);
 });
 
-test("grounded actor feet follow uphill and downhill terrain without hovering", () => {
+test("terrain traversal stays on or above the hills and settles after a drop", () => {
   const actor = new THREE.Group();
+  actor.position.z = 10;
   const state = { grounded: true, velocity: new THREE.Vector3() };
   const footOffset = 0.42;
-  for (let x = -80; x <= 80; x += 2) {
+  for (let x = -80; x <= 80; x += 0.1) {
     actor.position.x = x;
     const y = ground.heightAt(x, 10);
     advanceGroundedActor(actor, state, footOffset, y, 1 / 60);
-    assert.ok(Math.abs(actor.position.y - footOffset - y) < 1e-8);
-    assert.equal(state.grounded, true);
-    assert.equal(state.velocity.y, 0);
+    assert.ok(actor.position.y - footOffset >= y - 1e-8);
+    if (state.grounded) assert.ok(Math.abs(actor.position.y - footOffset - y) < 1e-8);
+    else assert.ok(state.velocity.y < 0);
+  }
+  const floor = ground.heightAt(actor.position.x, actor.position.z);
+  for (let frame = 0; frame < 120 && !state.grounded; frame++) advanceGroundedActor(actor, state, footOffset, floor, 1 / 60);
+  assert.equal(state.grounded, true);
+  assert.ok(Math.abs(actor.position.y - footOffset - floor) < 1e-8);
+});
+
+test("walking off a platform starts an accelerating fall instead of snapping down", () => {
+  const actor = new THREE.Group();
+  const offset = 0.4;
+  actor.position.y = 4 + offset;
+  const state = { grounded: true, velocity: new THREE.Vector3() };
+  advanceGroundedActor(actor, state, offset, 0, 1 / 60, { snapDown: false });
+  assert.equal(state.grounded, false);
+  assert.ok(actor.position.y < 4 + offset && actor.position.y > 3.9 + offset);
+  const firstVelocity = state.velocity.y;
+  const firstY = actor.position.y;
+  advanceGroundedActor(actor, state, offset, 0, 1 / 60);
+  assert.ok(state.velocity.y < firstVelocity);
+  assert.ok(firstY - actor.position.y > 4 + offset - firstY);
+  for (let frame = 0; frame < 120 && !state.grounded; frame++) advanceGroundedActor(actor, state, offset, 0, 1 / 60);
+  assert.equal(state.grounded, true);
+  assert.equal(state.velocity.y, 0);
+  assert.equal(actor.position.y, offset);
+});
+
+test("even a short platform edge falls while continuous gentle slopes stay grounded", () => {
+  const actor = new THREE.Group();
+  const state = { grounded: true, velocity: new THREE.Vector3() };
+  actor.position.y = 1;
+  advanceGroundedActor(actor, state, 0, 0.95, 1 / 60, { snapDown: false });
+  assert.equal(state.grounded, false);
+  assert.ok(actor.position.y > 0.95);
+  actor.position.y = 1;
+  state.grounded = true; state.velocity.y = 0;
+  advanceGroundedActor(actor, state, 0, 0.95, 1 / 60);
+  assert.equal(state.grounded, true);
+  assert.equal(actor.position.y, 0.95);
+});
+
+test("jump arcs are consistent at different frame rates and pause does not advance gravity", () => {
+  for (const fps of [30, 60, 120]) {
+    const actor = new THREE.Group();
+    const state = { grounded: false, velocity: new THREE.Vector3(0, 11, 0) };
+    actor.position.y = 5.4;
+    for (let frame = 0; frame < fps * 0.3; frame++) advanceGroundedActor(actor, state, 0.4, 5, 1 / fps);
+    assert.ok(Math.abs(actor.position.y - (5.4 + 11 * 0.3 - 14 * 0.3 ** 2)) < 1e-8);
+    assert.ok(Math.abs(state.velocity.y - (11 - 28 * 0.3)) < 1e-8);
+    const position = actor.position.y, velocity = state.velocity.y;
+    advanceGroundedActor(actor, state, 0.4, 5, 0);
+    assert.equal(actor.position.y, position);
+    assert.equal(state.velocity.y, velocity);
   }
 });
 
@@ -171,4 +226,38 @@ test("terrain horizon matches the real model border and extends past the fog lim
     `Crack at ${key(vertex)}`);
   }
   assert.ok(surround.children[0].geometry.index.count / 3 < 15000, "Distant tiles use reduced detail");
+});
+
+test("base moves to a flatter patch on the actual terrain", () => {
+  const site = findBaseSite(ground, 7.8, 7.1);
+  let oldVariation = Infinity;
+  for (const x of [16, 22, 28]) {
+    for (const z of [-16, -22, -28]) {
+      let low = Infinity, high = -Infinity;
+      for (let ix = 0; ix <= 16; ix++) {
+        for (let iz = 0; iz <= 16; iz++) {
+          const height = ground.heightAt(x - 7.8 + ix / 16 * 15.6, z - 7.1 + iz / 16 * 14.2);
+          low = Math.min(low, height);
+          high = Math.max(high, height);
+        }
+      }
+      oldVariation = Math.min(oldVariation, high - low);
+    }
+  }
+  assert.ok(site.variation < oldVariation, `${site.variation} should improve on ${oldVariation}`);
+  assert.ok(site.x - 7.8 > ground.bounds.min.x && site.x + 7.8 < ground.bounds.max.x);
+  assert.ok(site.z - 7.1 > ground.bounds.min.z && site.z + 7.1 < ground.bounds.max.z);
+  console.log(`Base site: (${site.x}, ${site.z}), height variation ${site.variation.toFixed(2)} versus ${oldVariation.toFixed(2)} units nearby`);
+});
+
+test("garden colony fits the actual hills beside a default or relocated base", () => {
+  for (const [x, z] of [[-76, 4], [70, 70], [-70, -70], [0, 0]]) {
+    const base = new THREE.Box3(new THREE.Vector3(x - 8, 0, z - 8), new THREE.Vector3(x + 8, 12, z + 8));
+    const site = findColonySite(ground, base);
+    assert.ok(site.x - 11 > ground.bounds.min.x && site.x + 11 < ground.bounds.max.x);
+    assert.ok(site.z - 14 > ground.bounds.min.z && site.z + 14 < ground.bounds.max.z);
+    assert.ok(Math.hypot(site.x - x, site.z - z) <= 60);
+    assert.ok(site.x + 11 <= base.min.x - 3 || site.x - 11 >= base.max.x + 3
+      || site.z + 14 <= base.min.z - 3 || site.z - 14 >= base.max.z + 3);
+  }
 });

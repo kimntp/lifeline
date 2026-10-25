@@ -75,16 +75,23 @@ export function measureFootOffset(actor) {
   return actor.position.y - new THREE.Box3().setFromObject(actor, true).min.y;
 }
 
-export function advanceGroundedActor(actor, state, footOffset, groundHeight, delta) {
+export function advanceGroundedActor(actor, state, footOffset, groundHeight, delta, { snapDown = true } = {}) {
   state.groundY = groundHeight;
   const floorY = groundHeight + footOffset;
-  if (state.grounded && state.velocity.y <= 0) {
+  const gap = actor.position.y - floorY;
+  // Follow small changes on a continuous slope, but release the character
+  // when a platform ends or the ground drops away beneath their feet.
+  if (state.grounded && state.velocity.y <= 0 && gap <= (snapDown ? 0.12 : 1e-4)) {
     actor.position.y = floorY;
     state.velocity.y = 0;
     return;
   }
-  state.velocity.y -= 28 * delta;
-  const nextY = actor.position.y + state.velocity.y * delta;
+  state.grounded = false;
+  const gravity = 28;
+  // Integrate displacement before changing velocity for consistent jump and
+  // fall arcs across frame rates: y += v*dt + 0.5*a*dt².
+  const nextY = actor.position.y + state.velocity.y * delta - 0.5 * gravity * delta * delta;
+  state.velocity.y -= gravity * delta;
   if (nextY <= floorY) {
     actor.position.y = floorY;
     state.velocity.y = 0;
