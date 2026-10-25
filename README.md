@@ -377,3 +377,26 @@ ACT 4: WHAT COMES NEXT (Roadmap)
 ## License
 
 MIT
+
+
+## ElevenLabs intro captions
+
+The intro displays timed captions at the bottom of the screen. Generate them once
+from the prerecorded MP3; no API key or transcription service is needed during gameplay.
+
+1. Add your ElevenLabs API key with speech-to-text permission to the local `.env` file:
+   `ELEVENLABS_API_KEY=your_key`. Keep this file private; do not use a `VITE_` prefix.
+2. Run `npm run transcribe:intro`. This uploads `public/assets/audio/Apollo Intro.mp3`
+   to ElevenLabs Scribe v2 and uses your account's transcription credits.
+3. Refresh the game. Captions follow audio time, including pauses and seeking.
+
+The generated `public/assets/audio/apollo-intro.captions.json` can be shipped with the
+build. Run the command again if the MP3 changes. Until captions are generated, the
+intro and robot still work, and the caption box stays hidden.
+
+
+The supplied Apollo intro script is now included by default, so captions work without
+an API key. The speaker label identifies Apollo and words reveal progressively in
+short pages. Script timing is estimated from the MP3 duration; pause and seek follow
+the audio clock. For more accurate sentence timing, the optional ElevenLabs command
+above replaces the estimated timeline with timestamped captions.

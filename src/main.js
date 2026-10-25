@@ -1,5 +1,8 @@
+import { ICE_ASSETS, buildIceBase } from "./ice-base.js";
+import { createPlayerVitals } from "./player-vitals.js";
+import { attachNarrationCaptions } from "./narration-captions.js";
 import * as THREE from "three"; // Core 3D engine
-import { registerNarrationAudio } from "./narration-audio.js";
+import { registerNarrationAudio, playNarrationAudio } from "./narration-audio.js";
 import { createOrangeBotOverlay } from "./orangebot-overlay.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"; // Load .glb city model
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
@@ -17,6 +20,9 @@ const session = new GameSession();
 const BASE_SPAWN_STORAGE_KEY = "lifeline:level-1:base-spawn";
 const PLAYER_SPAWN_STORAGE_KEY = "lifeline:level-1:player-spawn";
 const COLONY_STORAGE_KEY = "lifeline:level-1:garden-colony";
+const ICE_BASE_STORAGE_KEY = "lifeline:level-1:ice-base";
+let iceModelsPromise = null;
+let placingIceBase = false;
 
 const shared = {
   scene: null,
@@ -24,6 +30,7 @@ const shared = {
   camera: null,
   city: null,
   spaceBase: null,
+  iceBase: null,
   colony: null,
   colonyModels: null,
   colonyInteraction: null,
@@ -34,7 +41,7 @@ const shared = {
   actions: null,
   keyboard: null,
   look: { yaw: 0, pitch: 0, sensitivity: 0.0022 },
-  playerState: { velocity: new THREE.Vector3(), grounded: true, groundY: 0 },
+  playerState: { velocity: new THREE.Vector3(), grounded: true, groundY: 0, health: 100, maxHealth: 100, oxygen: 100, maxOxygen: 100 },
   orbit: { theta: 0, phi: 0.4, distance: 50 },
   stateMachine: null,
   cameraDistance: 8,
@@ -51,6 +58,7 @@ function worldGroundHeight(x, z) {
   return foundationHeightAt(shared.spaceBase, x, z, Math.max(terrain, shared.colony?.heightAt(x, z) ?? terrain));
 }
 
+let updatePlayerVitals = null;
 let _previewId = null;
 let _previewing = false;
 const _previewFns = [];
@@ -133,6 +141,7 @@ function startPreview() {
     }
 
     // Final render pass — draw everything to the canvas
+    updatePlayerVitals?.(!session.paused);
     shared.colonyInteraction?.setVisible(!session.paused);
     const { scene, renderer, camera } = shared;
     if (scene && renderer && camera) {
@@ -550,6 +559,7 @@ function step6_gravity() {
 function step7_movement() {
   const intro = registerNarrationAudio(new Audio(`${import.meta.env.BASE_URL}assets/audio/Apollo%20Intro.mp3`));
   intro.preload = "auto";
+  attachNarrationCaptions(intro, `${import.meta.env.BASE_URL}assets/audio/apollo-intro.captions.json`);
   let introStarted = false;
   let introPending = false;
 
@@ -564,8 +574,8 @@ function step7_movement() {
 
     // Start in the key event so browser autoplay rules allow narration.
     introPending = true;
-    intro.play().then(() => {
-      introStarted = true;
+    playNarrationAudio(intro).then((played) => {
+      introStarted = played;
       introPending = false;
     }).catch((error) => {
       introPending = false;
@@ -803,6 +813,9 @@ function step9_collision() {
 
     if (baseBounds) resolveBaseCollision(player.position, prevPos ?? player.position, baseBounds, radius);
     if (shared.colony) resolveBaseCollision(player.position, prevPos ?? player.position, shared.colony.domeBounds, radius);
+    for (const bounds of shared.iceBase?.obstacles ?? []) {
+      resolveBaseCollision(player.position, prevPos ?? player.position, bounds, radius);
+    }
     const platforms = [shared.spaceBase?.userData.foundationBounds,
       ...(shared.colony?.plots.map(plot => plot.bounds) ?? [])];
     for (const bounds of platforms) {
@@ -828,6 +841,7 @@ function step9_collision() {
 async function main() {
   // step 1
   await step1_sceneSetup();
+  updatePlayerVitals = createPlayerVitals(shared.playerState);
   startPreview();
   createOrangeBotOverlay().then((render) => addPreviewFn(render, 100))
     .catch((error) => console.error("OrangeBOT could not load:", error));
@@ -835,6 +849,12 @@ async function main() {
   await step2_city();
   await loadSpaceBase();
   await loadGardenColony();
+  try {
+    const location = JSON.parse(localStorage.getItem(ICE_BASE_STORAGE_KEY));
+    if (location) await placeIceBase(location);
+  } catch (error) {
+    console.warn("Saved ice base could not load:", error);
+  }
 
   // step 3
   await step3_cityMovement();
@@ -972,6 +992,44 @@ function moveColonyHere() {
   }
 }
 
+async function placeIceBase(location) {
+  if (!iceModelsPromise) {
+    const loader = new FBXLoader();
+    iceModelsPromise = Promise.all(ICE_ASSETS.map(async name => [name,
+      await loader.loadAsync(`${import.meta.env.BASE_URL}assets/${name}.fbx`)]))
+      .then(entries => Object.fromEntries(entries))
+      .catch(error => { iceModelsPromise = null; throw error; });
+  }
+  const models = await iceModelsPromise;
+  const next = buildIceBase({ models, ground: shared.terrainGround, location,
+    blockedBounds: [shared.spaceBase && new THREE.Box3().setFromObject(shared.spaceBase), shared.colony?.bounds] });
+  if (shared.iceBase) shared.scene.remove(shared.iceBase.group);
+  shared.scene.add(next.group);
+  shared.iceBase = next;
+}
+
+async function iceBaseHere() {
+  if (session.screen !== "paused" || !shared.player || placingIceBase) return;
+  placingIceBase = true;
+  const location = { x: shared.player.position.x, z: shared.player.position.z };
+  gameMenu.status("Building ice base...");
+  try {
+    await placeIceBase(location);
+    clearGameInput();
+    try {
+      localStorage.setItem(ICE_BASE_STORAGE_KEY, JSON.stringify(location));
+      gameMenu.status("Ice base placed here and saved. Resume to explore.");
+    } catch {
+      gameMenu.status("Ice base placed here. Browser storage is unavailable, so it will reset on reload.");
+    }
+  } catch (error) {
+    console.error("Ice base placement failed:", error);
+    gameMenu.status(error.message);
+  } finally {
+    placingIceBase = false;
+  }
+}
+
 function setSpawnHere() {
   if (session.screen !== "paused" || !shared.player || !shared.spaceBase) return;
   const saved = {
@@ -1002,6 +1060,7 @@ const gameMenu = createGameMenu({
   onMoveBase: moveBaseHere,
   onSetSpawn: setSpawnHere,
   onMoveColony: moveColonyHere,
+  onIceBase: iceBaseHere,
 });
 gameMenu.render({ focus: false });
 
@@ -1037,12 +1096,19 @@ document.addEventListener("pointerlockerror", () => {
   gameMenu.status("Mouse capture was declined. Click Start or Resume to try again.");
 });
 window.addEventListener("keydown", event => {
+  if (event.code === "KeyM" && !event.repeat && !["SELECT", "INPUT", "TEXTAREA"].includes(event.target.tagName)) {
+    gameMenu.toggleMute();
+    return;
+  }
   if (event.code !== "KeyP" || event.repeat || ["SELECT", "INPUT", "TEXTAREA"].includes(event.target.tagName)) return;
   if (!session.paused) pauseGame();
   else if (session.screen === "paused") requestPlay();
 });
 window.addEventListener("blur", () => {
   if (!session.paused) pauseGame();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && !session.paused) pauseGame();
 });
 
 main().catch(error => {

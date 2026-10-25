@@ -1,6 +1,8 @@
+import { dialogueSession } from "./dialogue-session.js";
 import { GARDEN_COLONY, nearestGardenWorker } from "./garden-colony.js";
 
-export function createColonyInteraction(colony) {
+export function createColonyInteraction(colony, channel = dialogueSession) {
+  const conversationOwner = {};
   const root = document.createElement("div");
   root.id = "colony-interface";
   root.hidden = true;
@@ -10,7 +12,7 @@ export function createColonyInteraction(colony) {
       <h2></h2><p id="colony-distance"></p>
     </div>
     <p id="colony-talk-prompt" class="colony-talk-prompt" hidden></p>
-    <section id="colony-dialogue" class="colony-dialogue" aria-label="Alien conversation" hidden>
+    <section id="colony-dialogue" class="colony-dialogue dialogue-box" aria-label="Alien conversation" hidden>
       <p id="colony-speaker" class="colony-eyebrow"></p>
       <p id="colony-dialogue-text" aria-live="polite"></p>
       <p class="colony-dialogue-hint">E — continue · Walk away to leave</p>
@@ -25,6 +27,7 @@ export function createColonyInteraction(colony) {
   function close() {
     if (conversation) conversation.talking = false;
     conversation = null;
+    channel.end(conversationOwner);
     dialogue.hidden = true;
   }
   function showLine() {
@@ -51,14 +54,14 @@ export function createColonyInteraction(colony) {
           line++;
           if (line >= conversation.profile.lines.length) close();
           else showLine();
-        } else if (worker) {
+        } else if (worker && channel.begin(conversationOwner)) {
           conversation = worker; line = 0;
           worker.talking = true;
           worker.visual.rotation.y = Math.atan2(player.position.x - worker.visual.position.x, player.position.z - worker.visual.position.z);
           showLine();
         }
       }
-      prompt.hidden = Boolean(conversation) || !worker;
+      prompt.hidden = Boolean(conversation) || !worker || channel.isBlocked(conversationOwner);
       if (worker) prompt.textContent = `E — Talk to ${worker.profile.name}`;
     },
   };

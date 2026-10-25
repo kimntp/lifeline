@@ -39,8 +39,8 @@ body {
 .colony-location h2 { font-size: clamp(1rem, 2vw, 1.2rem); margin: 6px 0; font-weight: 500; }
 #colony-distance { font-size: 0.8rem; color: #d4ddcf; line-height: 1.5; }
 .colony-talk-prompt { position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%); z-index: 12; padding: 12px 20px; border: 1px solid #819b76; border-radius: 8px; color: #edffe8; background: rgba(14, 25, 18, 0.9); pointer-events: none; white-space: nowrap; }
-.colony-dialogue { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 12; width: min(640px, calc(100vw - 32px)); padding: 24px; color: #f0f5ed; background: rgba(12, 20, 18, 0.95); border: 1px solid #6a8560; border-radius: 12px; pointer-events: none; }
-#colony-dialogue-text { margin: 12px 0; font-size: 1rem; line-height: 1.65; }
+.colony-dialogue { color: #f0f5ed; }
+#colony-dialogue-text { margin: 0; min-height: 2.9em; }
 .colony-dialogue-hint { font-size: 0.75rem; color: #a9bca2; }
 
 #screen-fade {
@@ -55,10 +55,10 @@ body {
 [hidden] { display: none !important; }
 
 button, select { font: inherit; }
-button { cursor: pointer; }
+button { cursor: pointer; border-radius: 0; }
 button:disabled { cursor: wait; opacity: 0.5; }
 button:focus-visible, select:focus-visible {
-  outline: 2px solid #ffbd75;
+  outline: 2px solid #b8b8b8;
   outline-offset: 4px;
 }
 
@@ -71,7 +71,7 @@ button:focus-visible, select:focus-visible {
   justify-content: center;
   padding: 24px;
   overflow-y: auto;
-  background: rgba(3, 4, 10, 0.72);
+  background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(8px);
   color: #f5f4ef;
 }
@@ -109,8 +109,8 @@ button:focus-visible, select:focus-visible {
   margin: auto;
   padding: 36px;
   border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 20px;
-  background: rgba(10, 12, 19, 0.86);
+  border-radius: 0;
+  background: #030303;
   box-shadow: 0 32px 100px rgba(0, 0, 0, 0.4);
 }
 
@@ -141,7 +141,7 @@ button:focus-visible, select:focus-visible {
 }
 
 .menu-eyebrow {
-  color: #ffbd75;
+  color: #b8b8b8;
   font-size: 0.65rem;
   font-weight: 600;
   letter-spacing: 0.3em;
@@ -190,8 +190,8 @@ button:focus-visible, select:focus-visible {
 .home-screen .menu-button.primary:hover:not(:disabled),
 .home-screen .menu-button.primary:focus-visible {
   background: transparent;
-  color: #ffcf9c;
-  text-shadow: 0 0 18px rgba(255, 189, 117, 0.6);
+  color: #dedede;
+  text-shadow: 0 0 18px rgba(184, 184, 184, 0.6);
 }
 .menu-description { color: #aab1c0; font-size: 0.9rem; line-height: 1.6; }
 .menu-actions { display: grid; gap: 10px; margin-top: 30px; }
@@ -203,13 +203,13 @@ button:focus-visible, select:focus-visible {
   color: #e9ecf2;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  border-radius: 0;
   transition: background 150ms ease, border-color 150ms ease;
 }
 
 .menu-button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); border-color: #778292; }
-.menu-button.primary { color: #23170c; background: #ffbd75; border-color: #ffbd75; font-weight: 600; }
-.menu-button.primary:hover:not(:disabled) { background: #ffd19e; border-color: #ffd19e; }
+.menu-button.primary { color: #171717; background: #b8b8b8; border-color: #b8b8b8; font-weight: 600; }
+.menu-button.primary:hover:not(:disabled) { background: #d4d4d4; border-color: #d4d4d4; }
 .menu-button.quiet { color: #aab1c0; border-color: transparent; }
 .menu-status { margin-top: 18px; color: #aab1c0; font-size: 0.8rem; line-height: 1.5; }
 .menu-status:empty { display: none; }
@@ -227,7 +227,7 @@ button:focus-visible, select:focus-visible {
   padding: 10px 14px;
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
+  border-radius: 0;
   background: rgba(10, 12, 19, 0.85);
 }
 
@@ -235,7 +235,7 @@ button:focus-visible, select:focus-visible {
 .pause-button kbd { color: #aab1c0; font-size: 0.75rem; }
 .controls-list { margin-top: 24px; }
 .controls-list div { display: flex; gap: 16px; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-.controls-list dt { color: #ffcf9c; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+.controls-list dt { color: #dedede; font-family: ui-monospace, monospace; font-size: 0.8rem; }
 .controls-list dd { color: #c6ccd7; text-align: right; font-size: 0.85rem; }
 #animation-menu-panel label { display: block; margin: 24px 0 10px; color: #c6ccd7; font-size: 0.85rem; }
 #astronaut-animation { width: 100%; padding: 12px; border-radius: 6px; background: #151a24; color: #fff; border: 1px solid #454e60; margin-bottom: 12px; }
@@ -264,7 +264,7 @@ button:focus-visible, select:focus-visible {
 }
 
 .step-badge {
-  background: linear-gradient(135deg, #ff8a00, #ffd000);
+  background: linear-gradient(135deg, #858585, #cccccc);
   color: #1a1a1a;
   font-weight: 800;
   font-size: 0.85rem;
@@ -272,7 +272,7 @@ button:focus-visible, select:focus-visible {
   border-radius: 20px;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  box-shadow: 0 4px 20px rgba(255, 138, 0, 0.4);
+  box-shadow: 0 4px 20px rgba(133, 133, 133, 0.4);
 }
 
 .step-desc {
@@ -336,15 +336,133 @@ button:focus-visible, select:focus-visible {
   color: #fff;
 }
 
-/* Fixed companion view; clicks pass through to the game. */
+/* Shared bottom HUD layout: vitals, dialogue, and overlapping companion. */
+:root {
+  --hud-left: max(16px, env(safe-area-inset-left));
+  --hud-right: max(12px, env(safe-area-inset-right));
+  --hud-bottom: max(20px, env(safe-area-inset-bottom));
+  --vitals-width: clamp(120px, 14vw, 170px);
+  --hud-gap: 12px;
+  --companion-size: min(clamp(120px, 22vw, 280px), 35vh);
+}
 #orangebot-overlay {
   position: fixed;
-  right: max(12px, env(safe-area-inset-right));
-  bottom: max(12px, env(safe-area-inset-bottom));
-  width: clamp(120px, 22vw, 280px);
-  height: clamp(120px, 22vw, 280px);
-  max-width: 35vh;
-  max-height: 35vh;
+  right: var(--hud-right);
+  bottom: var(--hud-bottom);
+  width: var(--companion-size);
+  height: var(--companion-size);
   pointer-events: none;
-  z-index: 5;
+  z-index: 7;
+}
+.dialogue-box {
+  position: fixed;
+  left: calc(var(--hud-left) + var(--vitals-width) + var(--hud-gap));
+  right: var(--hud-right);
+  bottom: var(--hud-bottom);
+  min-height: 88px;
+  padding: 12px calc(var(--companion-size) * 0.78) 12px 18px;
+  border: 1px solid rgba(184, 184, 184, 0.45);
+  border-radius: 12px;
+  background: rgba(5, 9, 18, 0.92);
+  color: #fff;
+  font-size: clamp(15px, 1.2vw, 19px);
+  line-height: 1.45;
+  text-align: left;
+  pointer-events: none;
+  z-index: 6;
+}
+#narration-captions[hidden] { display: none; }
+#narration-speaker, #colony-speaker {
+  display: block;
+  margin-bottom: 4px;
+  color: #b8b8b8;
+  font-size: 0.75em;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+#narration-line { margin: 0; min-height: 2.9em; }
+#player-vitals {
+  position: fixed;
+  left: var(--hud-left);
+  bottom: var(--hud-bottom);
+  width: var(--vitals-width);
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  color: #f4f8ff;
+  pointer-events: none;
+  z-index: 6;
+}
+#player-vitals[hidden] { display: none; }
+.vital-row { display: flex; align-items: center; }
+.vital-icon {
+  flex-shrink: 0;
+  color: #ff777e;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+.vital-oxygen .vital-icon { color: #60deff; font-size: 13px; }
+.vital-detail { flex: 1; min-width: 0; }
+.vital-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.vital-value { font-variant-numeric: tabular-nums; }
+.vital-track { height: 5px; overflow: hidden; border-radius: 4px; background: #28313e; }
+.vital-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #e5445b, #ff9291);
+  transform-origin: left;
+  transition: transform 0.25s ease;
+}
+.vital-oxygen .vital-fill { background: linear-gradient(90deg, #168bc9, #70eeff); }
+.vital-low .vital-value { color: #cccccc; }
+@media (max-width: 600px) {
+  :root {
+    --hud-left: max(8px, env(safe-area-inset-left));
+    --hud-right: max(8px, env(safe-area-inset-right));
+    --hud-bottom: max(12px, env(safe-area-inset-bottom));
+    --vitals-width: 104px;
+    --hud-gap: 8px;
+    --companion-size: min(100px, 28vh);
+  }
+  #player-vitals { padding: 8px; gap: 9px; }
+  .vital-icon { font-size: 16px; }
+  .vital-oxygen .vital-icon { font-size: 11px; }
+  .vital-heading { font-size: 10px; }
+  .dialogue-box {
+    padding: 10px calc(var(--companion-size) * 0.55) 10px 10px;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vital-fill { transition: none; }
+}
+
+.pause-button.mute-button { right: 150px; }
+@media (max-width: 520px) {
+  .pause-button.mute-button { right: 140px; }
+}
+
+.dialogue-box.colony-dialogue {
+  background: rgba(12, 20, 18, 0.95);
+  border-color: #6a8560;
+  color: #f0f5ed;
+}
+#colony-speaker { color: #b5e6a5; }
+.colony-dialogue-hint { margin-top: 6px; }
+.colony-talk-prompt {
+  top: max(100px, 18vh);
+  bottom: auto;
 }
