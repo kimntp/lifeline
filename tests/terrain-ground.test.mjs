@@ -7,6 +7,7 @@ import { createTerrainSurround } from "../src/terrain-surround.js";
 import { LEVEL_LAYOUT } from "../src/level-layout.js";
 import { createAlienLoader, prepareAlienModel } from "../src/alien-farmers.js";
 import { ICE_ASSETS, buildIceBase } from "../src/ice-base.js";
+import { resolveBaseCollision } from "../src/base-collision.js";
 import { createSampleStation } from "../src/sample-station.js";
 import { GardenMission } from "../src/garden-mission.js";
 import { findBaseSite, placeSpaceBase, getPlayerSpawn } from "../src/space-base.js";
@@ -268,7 +269,7 @@ test("garden colony fits the actual hills beside a default or relocated base", (
 });
 
 
-test("fixed level layout preserves the actual default world and a clear foundation spawn", () => {
+test("fixed level layout keeps the relocated base clear and leaves an exit toward Colony 2", () => {
   function asset(file) {
     const bytes = fs.readFileSync(new URL(`../public/assets/${file}.fbx`, import.meta.url));
     return createAlienLoader().parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), "");
@@ -276,10 +277,10 @@ test("fixed level layout preserves the actual default world and a clear foundati
   const baseModel = asset("Base");
   const original = placeSpaceBase(baseModel.clone(true), ground);
   const base = placeSpaceBase(baseModel, ground, LEVEL_LAYOUT.base);
-  assert.ok(base.userData.buildingBounds.min.distanceTo(original.userData.buildingBounds.min) < 1e-6);
-  assert.ok(base.userData.buildingBounds.max.distanceTo(original.userData.buildingBounds.max) < 1e-6);
+  assert.equal(base.userData.site.x, original.userData.site.x);
+  assert.equal(base.userData.site.z, original.userData.site.z - 12);
   const baseBounds = new THREE.Box3().setFromObject(base);
-  const originalGarden = findColonySite(ground, baseBounds);
+  const originalGarden = findColonySite(ground, new THREE.Box3().setFromObject(original));
   assert.equal(LEVEL_LAYOUT.garden.x, originalGarden.x);
   assert.equal(LEVEL_LAYOUT.garden.z, originalGarden.z);
   const colony = buildGardenColony({ ground, baseBounds, location: LEVEL_LAYOUT.garden,
@@ -290,7 +291,7 @@ test("fixed level layout preserves the actual default world and a clear foundati
   assert.equal(ice.bounds.intersectsBox(baseBounds), false);
   assert.equal(ice.bounds.intersectsBox(colony.bounds), false);
   const spawn = getPlayerSpawn(base, ground, LEVEL_LAYOUT.spawn);
-  const originalSpawn = getPlayerSpawn(original, ground, null);
+  const originalSpawn = getPlayerSpawn(base, ground, null);
   assert.equal(spawn.custom, true, "Fixed spawn must not fall back to automatic placement");
   assert.ok(spawn.position.distanceTo(originalSpawn.position) < 1e-6);
   assert.equal(spawn.position.y, base.userData.foundationBounds.max.y);
@@ -298,5 +299,20 @@ test("fixed level layout preserves the actual default world and a clear foundati
   const station = createSampleStation(); station.update(base, ground, new GardenMission(), colony.bounds);
   assert.equal(station.bounds.intersectsBox(base.userData.foundationBounds), false);
   assert.equal(station.bounds.intersectsBox(colony.bounds), false);
+  const sealedGarden = colony.bounds.clone().expandByScalar(1.5);
+  assert.equal(sealedGarden.intersectsBox(base.userData.foundationBounds), false);
+  assert.equal(sealedGarden.intersectsBox(station.bounds), false);
+  const player = { position: spawn.position.clone() };
+  const state = { grounded: true, velocity: new THREE.Vector3() };
+  for (let i = 0; i < 120; i++) {
+    const previous = player.position.clone(); player.position.x += 0.1;
+    for (const bounds of [base.userData.buildingBounds, sealedGarden, station.bounds]) resolveBaseCollision(player.position, previous, bounds);
+    const x = player.position.x, z = player.position.z;
+    const foundation = base.userData.foundationBounds;
+    const height = x >= foundation.min.x && x <= foundation.max.x && z >= foundation.min.z && z <= foundation.max.z
+      ? Math.max(ground.heightAt(x, z), foundation.max.y) : ground.heightAt(x, z);
+    advanceGroundedActor(player, state, 0, height, 1 / 60, { snapDown: false });
+  }
+  assert.ok(player.position.x > base.userData.foundationBounds.max.x + 1, "Player can walk off the foundation toward the ice colony after completing mission one");
   colony.dispose();
 });

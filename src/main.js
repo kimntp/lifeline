@@ -391,17 +391,19 @@ async function loadGardenColony() {
     }
     if (gardenMission.completed && shared.player) shared.iceEncounter?.update(delta, shared.player, shared.playerState);
   }, 50);
-  addPreviewFn(delta => {
-    if (!shared.player) return;
-    if (gardenMission.completed && shared.iceInteraction) {
-      shared.colonyInteraction.leave();
-      shared.iceInteraction.update(shared.player, shared.keyboard, delta);
-      if (shared.iceEncounter.phase === "complete" && !shared.iceEncounter.aftermathPlayed) void playIceAftermath();
-    } else {
-      shared.iceInteraction?.leave();
-      shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
-    }
-  }, 52);
+  addPreviewFn(updateColonyInteraction, 52);
+}
+
+function updateColonyInteraction(delta) {
+  if (!shared.player) return;
+  if (gardenMission.completed && shared.iceInteraction) {
+    shared.colonyInteraction.leave();
+    shared.iceInteraction.update(shared.player, shared.keyboard, delta);
+    if (shared.iceEncounter.phase === "complete" && !shared.iceEncounter.aftermathPlayed) void playIceAftermath();
+  } else {
+    shared.iceInteraction?.leave();
+    shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
+  }
 }
 
 function buildProceduralCity(scene) {

@@ -142,9 +142,11 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
       && Math.abs(player.position.y - getFootOffset() - target.y) <= 0.6;
   }
   return {
+    leave: close,
     destroy() { close(); speech.destroy(); dubbing.destroy(); root.remove(); },
     refresh: renderMission,
     setVisible(nextVisible) {
+      nextVisible = nextVisible && !mission.completed;
       if (visible && !nextVisible) speech.cancel();
       dubbing.setPaused(!nextVisible);
       visible = nextVisible;

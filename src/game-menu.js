@@ -53,11 +53,17 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
         <p class="menu-eyebrow" id="menu-eyebrow" hidden></p>
         <h1 id="menu-title" tabindex="-1">Lifeline</h1>
         <p id="menu-description" class="menu-description" hidden></p>
-        <div id="menu-actions" class="menu-actions">
-          <button id="play-button" class="menu-button primary" type="button" disabled>Loading world…</button>
-          <button id="instructions-button" class="menu-button" type="button">Instructions</button>
-          <button id="menu-mute-button" class="menu-button" type="button" aria-pressed="false" hidden>Mute audio</button>
-          <button id="home-button" class="menu-button quiet" type="button" hidden>Home screen</button>
+        <div class="home-response">
+          <div id="home-transmission" class="home-transmission" hidden>
+            <p class="transmission-heading"><span class="transmission-dot" aria-hidden="true"></span>DISTRESS SIGNAL DETECTED</p>
+            <p class="transmission-source">SOURCE UNKNOWN // AWAITING RESPONSE</p>
+          </div>
+          <div id="menu-actions" class="menu-actions">
+            <button id="play-button" class="menu-button primary" type="button" disabled><span class="start-arrow" aria-hidden="true">&gt;</span><span id="play-label">Loading world…</span></button>
+            <button id="instructions-button" class="menu-button" type="button">Instructions</button>
+            <button id="menu-mute-button" class="menu-button" type="button" aria-pressed="false" hidden>Mute audio</button>
+            <button id="home-button" class="menu-button quiet" type="button" hidden>Home screen</button>
+          </div>
         </div>
         <div id="instructions-panel" hidden>
           <dl class="controls-list">
@@ -134,7 +140,19 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
   element("mute-button").addEventListener("click", toggleMute);
   element("menu-mute-button").addEventListener("click", toggleMute);
   element("pause-button").addEventListener("click", onPause);
-  element("play-button").addEventListener("click", onPlay);
+  element("play-button").addEventListener("click", () => {
+    if (!session.ready || activeTransition || launchRequested) return;
+    if (session.screen === "home") {
+      launchRequested = true;
+      updateStartControl();
+    }
+    try {
+      const request = onPlay();
+      request?.catch(error => menu.failStart(`Could not establish connection. ${error.message}`));
+    } catch (error) {
+      menu.failStart(`Could not establish connection. ${error.message}`);
+    }
+  });
   for (const [id, target] of [["instructions-button", "instructions"],
     ["home-button", "home"], ["menu-back", "back"]]) {
     element(id).addEventListener("click", () => onNavigate(target));

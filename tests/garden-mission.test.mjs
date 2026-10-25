@@ -165,6 +165,7 @@ test("E completes the entire peaceful survey, then deposits only at the base sta
     assert.equal(deposits, 1);
     assert.equal(mission.phase, "depositing");
     mission.finishDeposit(); interaction.refresh();
+    assert.doesNotThrow(() => interaction.leave(), "Phase two can release the garden dialogue without stopping the game loop");
     assert.equal(elements.get("#mission-title").textContent, "SURVEY COMPLETE");
     assert.deepEqual(mission.inventory, []);
     interaction.setVisible(true);

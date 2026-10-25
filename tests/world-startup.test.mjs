@@ -31,7 +31,7 @@ test("world startup wires a fresh mission, base sample station and deposit callb
     }
   }
   const noop = () => {};
-  const api = vm.runInNewContext(`${source}\n({ shared, session, loadSpaceBase, placeIceBase, updateWorldProgression, selectPlayerTool, createSurveyInteraction, step9_collision, callbacks: _previewFns, loop: _loopShared, getMission: () => gardenMission });`, {
+  const api = vm.runInNewContext(`${source}\n({ shared, session, loadSpaceBase, placeIceBase, updateWorldProgression, updateColonyInteraction, selectPlayerTool, createSurveyInteraction, step9_collision, callbacks: _previewFns, loop: _loopShared, getMission: () => gardenMission });`, {
     THREE, GameSession, GardenMission, ASTRONAUT_CLIPS, placeSpaceBase, createSampleStation, LEVEL_LAYOUT,
     FBXLoader: AssetLoader, ICE_ASSETS, buildIceBase, resolveBaseCollision, resolvePlatformCollision, dialogueSession: { busy: false },
     createColonyInteraction(_colony, options) { interactionOptions = options; return {}; },
@@ -73,6 +73,13 @@ test("world startup wires a fresh mission, base sample station and deposit callb
   mission.finishDeposit();
   api.updateWorldProgression();
   assert.equal(api.shared.iceBase.group.visible, true);
+  let leftGarden = 0, iceFrames = 0;
+  api.shared.colonyInteraction = { leave() { leftGarden++; }, update() { assert.fail("Completed garden must not resume its objectives"); } };
+  api.shared.iceInteraction = { update() { iceFrames++; } };
+  api.shared.iceEncounter = { phase: "neutral", group: new THREE.Group() };
+  api.shared.player = { position: new THREE.Vector3() };
+  for (let i = 0; i < 3; i++) api.updateColonyInteraction(1 / 60);
+  assert.equal(leftGarden, 3); assert.equal(iceFrames, 3, "Phase two keeps updating after sample turn-in");
   assert.equal(api.shared.baton.visible, true, "Baton appears after the sample-report wake-up");
   api.shared.pickaxe = new THREE.Group();
   api.selectPlayerTool("pickaxe"); api.updateWorldProgression();
