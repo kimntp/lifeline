@@ -13,6 +13,7 @@ export class IceEncounter {
     this.ground = ground;
     this.onPlayerDown = onPlayerDown;
     this.phase = "neutral";
+    this.directContact = false;
     this.units = [];
     this.batonCooldown = 0;
     this.miningCooldown = 0;

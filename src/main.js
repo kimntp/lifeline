@@ -187,9 +187,9 @@ function startPreview() {
     updateWorldProgression();
     shared.inventoryUI?.update({ visible: !session.paused && !flags.missionTransition && !shared.iceAftermath && !shared.surveyMontage && !dialogueSession.busy,
       selected: shared.selectedTool, combatUnlocked: gardenMission.completed });
-    apolloNarrator?.setPaused(session.paused || flags.missionTransition || Boolean(shared.surveyMontage));
+    apolloNarrator?.setPaused(session.paused || flags.missionTransition || Boolean(shared.surveyMontage) || Boolean(shared.iceAftermath));
     apolloNarrator?.update();
-    updatePlayerVitals?.(!session.paused && !shared.surveyMontage);
+    updatePlayerVitals?.(!session.paused && !shared.surveyMontage && !shared.iceAftermath);
     shared.colonyInteraction?.setVisible(!session.paused && !gardenMission.completed);
     shared.iceInteraction?.setVisible(!session.paused && gardenMission.completed && !shared.iceAftermath && !shared.surveyMontage && !flags.missionTransition);
     const { scene, renderer, camera } = shared;
@@ -1050,8 +1050,13 @@ async function playIceAftermath() {
   try {
     await gameMenu.transitionToGame(() => {
       shared.player.visible = false;
-      shared.iceAftermath = createIceAftermath({ alien: shared.iceEncounter.lastAlien, camera: shared.camera,
+      shared.iceAftermath = createIceAftermath({ alien: shared.iceEncounter.lastAlien, player: shared.player, scene: shared.scene, camera: shared.camera,
+        obstacles: shared.iceBase.obstacles,
         ground: shared.terrainGround, occluders: shared.iceEncounter.occluders, channel: dialogueSession,
+        onDirectContact: () => {
+          shared.iceEncounter.directContact = true;
+          shared.iceEncounter.message = "Direct contact: The company exports the colonies' crops and water to Earth and forces their people to work. The alien is asking for help.";
+        },
         reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches });
       shared.iceEncounter.aftermathPlayed = true;
     });

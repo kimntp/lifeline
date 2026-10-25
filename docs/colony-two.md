@@ -46,10 +46,18 @@ The pause menu has no location or spawn editing controls. Reloading resets the l
 mission/encounter state; world locations load from the fixed level layout. All timers use
 simulation delta and freeze while paused or during fade transitions.
 
-Completing all three resource tasks triggers a fade into an injured-alien
-close-up exactly once. Gameplay freezes, the HUD clears, and the downed alien
-trembles while the astronaut hears a direct plea without Apollo's translation.
-Captions always appear; browser speech supplies temporary voice audio where
-supported and respects mute/pause. E or Continue returns through another fade
-to the previous gameplay camera, with samples and completed tasks retained.
-Reduced-motion mode removes the trembling.
+Completing all three resource tasks triggers the injured-alien scene once.
+After the alien's plea, four black-suited company guards march in on routes
+around the ice. One swings a baton at the astronaut; a cinematic copy uses the
+native fall animation and stays on the ground. Apollo's companion overlay then
+glitches, with a reduced-motion alternative, and the translation filter fails.
+An E-to-continue conversation reveals directly that the company exports crops
+and water to Earth and forces the colonies to work. The player can answer the
+alien and hear the appeal for help without Apollo substituting new sample tasks.
+Later conversations retain this unfiltered dialogue instead of returning to
+Apollo’s earlier instructions.
+The sequence freezes gameplay and pauses narration. Speech and captions respect
+mute and pause. Finishing the conversation fades back to gameplay with samples
+and encounter progress intact; cinematic guards, skeletons, materials, UI,
+keyboard listeners and glitch effects are removed. No live player or alien
+health state is overwritten by the scripted attack.

@@ -114,6 +114,12 @@ test("downed alien dialogue unlocks Apollo's tasks without giving an exact trans
     assert.equal(completed, 1, "Final water scan starts the scene");
     assert.equal(encounter.phase, "complete");
     press(); assert.equal(completed, 1, "Completed samples cannot retrigger the scene");
+    ui.leave(); // The guard cutscene closes the encounter UI before unlocking direct contact.
+    encounter.directContact = true;
+    player.position.copy(encounter.lastAlien.visual.position);
+    press(); press();
+    assert.match(elements.get("#ice-line").textContent, /Earth.*forced to work/);
+    assert.doesNotMatch(elements.get("#ice-line").textContent, /Translation processed/);
     ui.destroy();
   } finally { globalThis.document = previousDocument; }
   encounter.dispose();

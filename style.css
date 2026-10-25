@@ -708,3 +708,10 @@ button:focus-visible, select:focus-visible {
 .montage-dissolve { position: absolute; inset: 0; background: #000; pointer-events: none; }
 .survey-montage[hidden], body.survey-cinematic #orangebot-overlay,
 body.survey-cinematic #narration-captions { display: none !important; }
+
+.aftermath-link { margin-top: 8px; color: #91ced7; font-family: monospace; font-size: .78em; letter-spacing: .06em; }
+body.apollo-glitch #orangebot-overlay { filter: hue-rotate(55deg) saturate(1.6) drop-shadow(3px 0 1px #87cfdf);
+  animation: apollo-link-failure 1.2s steps(2, end) infinite; }
+body.apollo-glitch .ice-aftermath { border-color: #bf83b5; }
+@keyframes apollo-link-failure { 0%,100% { transform: translateX(0) skewX(0); } 35% { transform: translateX(-4px) skewX(-3deg); } 65% { transform: translateX(3px) skewX(2deg); } }
+@media (prefers-reduced-motion: reduce) { body.apollo-glitch #orangebot-overlay { animation: none; } }

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { DIRECT_ALIEN_DIALOGUE } from "./ice-aftermath.js";
 import { dialogueSession } from "./dialogue-session.js";
 
 export function createIceInteraction(encounter, { channel = dialogueSession, onComplete = () => {}, getTool = () => "baton" } = {}) {
@@ -96,6 +97,7 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
             { speaker: "Gray colonist", text: "You. We recognize you. That suit carries the same company mark. Stay away from our water!" },
             { speaker: "Apollo", text: "They are turning hostile. Your taser baton is equipped. Put them to sleep—do not kill them." },
           ];
+          else if (encounter.directContact) lines = DIRECT_ALIEN_DIALOGUE;
           else lines = [
             { speaker: "Downed gray alien", text: "[The alien speaks urgently in an untranslated language.]" },
             { speaker: "You", text: "Apollo, translate that. What is he saying?" },
