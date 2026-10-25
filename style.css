@@ -198,3 +198,16 @@ body {
   font-family: inherit;
   color: #fff;
 }
+
+/* Fixed companion view; clicks pass through to the game. */
+#orangebot-overlay {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: clamp(120px, 22vw, 280px);
+  height: clamp(120px, 22vw, 280px);
+  max-width: 35vh;
+  max-height: 35vh;
+  pointer-events: none;
+  z-index: 5;
+}
