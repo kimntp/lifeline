@@ -103,3 +103,31 @@ test("script pages cover the duration and progressively reveal the supplied text
   const last = cues.at(-1);
   assert.equal(progressiveCaptionAtTime(cues, last.start + (last.end - last.start) * 0.9), last.text);
 });
+
+
+test("inline generated captions clean up without erasing a newer Apollo message", async () => {
+  const originals = Object.fromEntries(["document", "fetch", "requestAnimationFrame", "cancelAnimationFrame"].map(key => [key, globalThis[key]]));
+  const elements = new Map();
+  try {
+    globalThis.document = {
+      getElementById: id => elements.get(id),
+      createElement: () => ({ textContent: "", hidden: true, setAttribute() {}, append(...children) { children.forEach(child => elements.set(child.id, child)); } }),
+      body: { appendChild(element) { elements.set(element.id, element); } },
+    };
+    globalThis.fetch = () => { throw new Error("generated captions must not fetch the old intro JSON"); };
+    globalThis.requestAnimationFrame = () => 1; globalThis.cancelAnimationFrame = () => {};
+    const { attachNarrationCaptions } = await import("../src/narration-captions.js");
+    const audio = () => Object.assign(new EventTarget(), { paused: false, ended: false, currentTime: 0, duration: 10 });
+    const first = audio(), second = audio();
+    const detachFirst = attachNarrationCaptions(first, { speaker: "Apollo", text: "First message." });
+    await new Promise(done => setImmediate(done)); first.dispatchEvent(new Event("playing"));
+    assert.equal(elements.get("narration-line").textContent, "First");
+    const detachSecond = attachNarrationCaptions(second, { speaker: "Apollo", text: "Second message." });
+    await new Promise(done => setImmediate(done)); second.dispatchEvent(new Event("playing"));
+    detachFirst();
+    assert.equal(elements.get("narration-captions").hidden, false);
+    assert.equal(elements.get("narration-line").textContent, "Second");
+    detachSecond();
+    assert.equal(elements.get("narration-captions").hidden, true);
+  } finally { Object.assign(globalThis, originals); }
+});

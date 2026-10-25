@@ -644,3 +644,25 @@ button:focus-visible, select:focus-visible {
   top: max(100px, 18vh);
   bottom: auto;
 }
+
+#speech-verification { margin-top: 10px; border-top: 1px solid #425741; padding-top: 8px; }
+.speech-instructions { font-size: 0.75em; color: #c0d5b9; }
+#speech-transcript { margin-top: 5px; font-size: 0.85em; color: #d4e6cc; }
+#speech-feedback { margin-top: 5px; font-size: 0.8em; color: #cbd3df; }
+#speech-differences { font-size: 0.75em; color: #ffb7b7; }
+#speech-verification[data-state="verified"] #speech-feedback { color: #a6e698; }
+#speech-verification[data-state="listening"] #speech-feedback { color: #7edfff; }
+
+.speech-word { border-bottom: 2px solid transparent; }
+.speech-word-correct {
+  color: #a8ffb3;
+  border-bottom-color: #68db85;
+  text-shadow: 0 0 9px rgba(91, 255, 138, 0.55);
+}
+.speech-word-missed {
+  color: #ffb7b7;
+  border-bottom: 2px dashed #ff8d8d;
+}
+
+.dialogue-box.apollo-dialogue { background: rgba(5, 9, 18, 0.92); border-color: rgba(184, 184, 184, 0.45); }
+.apollo-dialogue #colony-speaker { color: #b8b8b8; }

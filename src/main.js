@@ -1,8 +1,7 @@
 import { ICE_ASSETS, buildIceBase } from "./ice-base.js";
 import { createPlayerVitals } from "./player-vitals.js";
-import { attachNarrationCaptions } from "./narration-captions.js";
+import { createApolloNarrator } from "./apollo-narrator.js";
 import * as THREE from "three"; // Core 3D engine
-import { registerNarrationAudio, playNarrationAudio } from "./narration-audio.js";
 import { createOrangeBotOverlay } from "./orangebot-overlay.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"; // Load .glb city model
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
@@ -26,6 +25,7 @@ const PLAYER_SPAWN_STORAGE_KEY = "lifeline:level-1:player-spawn";
 const COLONY_STORAGE_KEY = "lifeline:level-1:garden-colony";
 const ICE_BASE_STORAGE_KEY = "lifeline:level-1:ice-base";
 let iceModelsPromise = null;
+let apolloNarrator = null;
 let placingIceBase = false;
 
 const shared = {
@@ -148,8 +148,10 @@ function startPreview() {
     }
 
     // Final render pass — draw everything to the canvas
+    apolloNarrator?.setPaused(session.paused || flags.missionTransition);
+    apolloNarrator?.update();
     updatePlayerVitals?.(!session.paused);
-    shared.colonyInteraction?.setVisible(!session.paused);
+    shared.colonyInteraction?.setVisible(!session.paused && !flags.missionTransition);
     const { scene, renderer, camera } = shared;
     if (scene && renderer && camera) {
       renderer.render(scene, camera);
@@ -325,6 +327,7 @@ async function loadSpaceBase() {
 function createSurveyInteraction(colony) {
   return createColonyInteraction(colony, {
     mission: gardenMission,
+    onApolloMessage: text => apolloNarrator?.say(text),
     onSample: () => { _loopShared.hit = true; },
     onDeposit: depositSurveySamples,
     getBaseTarget: () => shared.sampleStation?.target,
@@ -577,32 +580,13 @@ function step6_gravity() {
 }
 
 function step7_movement() {
-  const intro = registerNarrationAudio(new Audio(`${import.meta.env.BASE_URL}assets/audio/Apollo%20Intro.mp3`));
-  intro.preload = "auto";
-  attachNarrationCaptions(intro, `${import.meta.env.BASE_URL}assets/audio/apollo-intro.captions.json`);
-  let introStarted = false;
-  let introPending = false;
-
   function playIntroOnMovement(code, keys) {
     const movementKeys = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"];
-    if (introStarted || introPending || !movementKeys.includes(code)) return;
-    if (!shared.player || !flags.movement || _loopShared.cameraMode !== "third-person") return;
+    if (!movementKeys.includes(code) || !shared.player || !flags.movement || _loopShared.cameraMode !== "third-person") return;
     if (document.pointerLockElement !== shared.renderer.domElement) return;
     const forward = Number(Boolean(keys.KeyW || keys.ArrowUp)) - Number(Boolean(keys.KeyS || keys.ArrowDown));
     const sideways = Number(Boolean(keys.KeyD || keys.ArrowRight)) - Number(Boolean(keys.KeyA || keys.ArrowLeft));
-    if (!forward && !sideways) return;
-
-    // Start in the key event so browser autoplay rules allow narration.
-    introPending = true;
-    playNarrationAudio(intro).then((played) => {
-      introStarted = played;
-      introPending = false;
-    }).catch((error) => {
-      introPending = false;
-      // A blocked attempt may retry on the next movement key press.
-      if (error.name !== "NotAllowedError") introStarted = true;
-      console.warn("Apollo intro could not play:", error);
-    });
+    if (forward || sideways) apolloNarrator?.startIntro();
   }
 
   // Captures held keys (continuous) + just-pressed keys (single-fire) + blur safety
@@ -862,6 +846,7 @@ async function main() {
   // step 1
   await step1_sceneSetup();
   updatePlayerVitals = createPlayerVitals(shared.playerState);
+  apolloNarrator = createApolloNarrator();
   startPreview();
   createOrangeBotOverlay().then((render) => addPreviewFn(render, 100))
     .catch((error) => console.error("OrangeBOT could not load:", error));
@@ -913,6 +898,8 @@ function clearGameInput() {
 function pauseGame() {
   gameMenu.cancelTransition();
   session.pause();
+  shared.colonyInteraction?.setVisible(false);
+  apolloNarrator?.setPaused(true);
   clearGameInput();
   if (document.pointerLockElement) document.exitPointerLock();
   gameMenu.render();
@@ -933,6 +920,8 @@ function requestPlay() {
 function navigateMenu(target) {
   if (shared.stateMachine?.preview) shared.stateMachine.setPreview("");
   clearGameInput();
+  shared.colonyInteraction?.setVisible(false);
+  apolloNarrator?.setPaused(true);
   if (target === "home") session.home();
   else if (target === "back") session.back();
   else session.open(target);
@@ -1147,6 +1136,8 @@ document.addEventListener("pointerlockchange", () => {
   } else {
     gameMenu.cancelTransition();
     session.pause();
+    shared.colonyInteraction?.setVisible(false);
+    apolloNarrator?.setPaused(true);
     clearGameInput();
   }
   gameMenu.render();
@@ -1154,6 +1145,8 @@ document.addEventListener("pointerlockchange", () => {
 document.addEventListener("pointerlockerror", () => {
   gameMenu.cancelTransition();
   session.pause();
+  shared.colonyInteraction?.setVisible(false);
+  apolloNarrator?.setPaused(true);
   gameMenu.render();
   gameMenu.status("Mouse capture was declined. Click Start or Resume to try again.");
 });

@@ -379,24 +379,70 @@ ACT 4: WHAT COMES NEXT (Roadmap)
 MIT
 
 
-## ElevenLabs intro captions
+## Apollo narration
 
-The intro displays timed captions at the bottom of the screen. Generate them once
-from the prerecorded MP3; no API key or transcription service is needed during gameplay.
+The intro is generated through ElevenLabs from `APOLLO_DIALOGUE.intro` in
+`src/apollo-dialogue.mjs`. The old `Apollo Intro.mp3` and estimated caption JSON are
+no longer loaded by the game. The generated audio drives progressive text captions.
+Apollo uses one voice ID, `APOLLO_VOICE` in `server/alien-voice.mjs`, for the intro,
+conversation lines and mission announcements.
+Announcements wait for the conversation channel to become free. Pause and mute apply
+to all voices, and Apollo's companion animates only for his own audio.
 
-1. Add your ElevenLabs API key with speech-to-text permission to the local `.env` file:
-   `ELEVENLABS_API_KEY=your_key`. Keep this file private; do not use a `VITE_` prefix.
-2. Run `npm run transcribe:intro`. This uploads `public/assets/audio/Apollo Intro.mp3`
-   to ElevenLabs Scribe v2 and uses your account's transcription credits.
-3. Refresh the game. Captions follow audio time, including pauses and seeking.
+## Spoken alien dialogue (ElevenLabs)
 
-The generated `public/assets/audio/apollo-intro.captions.json` can be shipped with the
-build. Run the command again if the MP3 changes. Until captions are generated, the
-intro and robot still work, and the caption box stays hidden.
+Player questions now require speech verification. Press **E** near a farmer to talk,
+then **V** to enable the microphone. Read the displayed player line and pause briefly
+for ElevenLabs to finalize the transcript. Incorrect words keep the same line locked;
+Apollo shows what was heard and asks you to repeat the whole sentence. A matching completed attempt
+automatically displays and dubs the alien's reply without an Apollo confirmation. A question
+can span multiple speech segments. Press **V** again to cancel and retry.
+
+Matching ignores case/punctuation and expands common contractions; it requires all
+words in order, including negations. It does not score pronunciation. Microphone and
+network errors offer a retry without advancing the mission. The microphone is closed
+on pause, tab switching, walking away, or destroying the conversation. Muting playback
+does not disable speech recognition. Each attempt has a 45-second inactivity/session limit.
+
+The server loads `ELEVENLABS_API_KEY` from the onboarded `.env.local` file. Restart
+`npm run dev` after this change so Vite installs the `/api/scribe-token` endpoint.
+Both `npm run dev` and `npm run preview` provide this server-side endpoint locally;
+only single-use Scribe tokens are returned to the browser. Microphone access requires
+localhost or HTTPS. Attempts use ElevenLabs speech-to-text credits.
+
+A static-only deployment cannot mint tokens. For public deployment, host
+`server/scribe-token.mjs` behind an authenticated server route at `/api/scribe-token`,
+with the key in server secrets. Preserve the origin checks, no-store headers and rate
+limit, and add your deployment's user authentication. Never put the key in a `VITE_`
+variable or in client code.
 
 
-The supplied Apollo intro script is now included by default, so captions work without
-an API key. The speaker label identifies Apollo and words reveal progressively in
-short pages. Script timing is estimated from the MP3 duration; pause and seek follow
-the audio clock. For more accurate sentence timing, the optional ElevenLabs command
-above replaces the estimated timeline with timestamped captions.
+## Dubbed farmer replies
+
+Iri, Vela, and Naru now speak their displayed replies through ElevenLabs, using
+George, Sarah, and Daniel respectively. The server uses Flash v2.5 and caches each
+voice/text pair in memory for the current server session, including simultaneous
+requests for the same clip. Only the game's scripted alien replies can be generated.
+The mappings can be changed in `server/alien-voice.mjs`.
+
+Restart the dev server to enable `/api/alien-voice`. After a spoken player question
+is verified, the reply plays automatically. E advances later lines after the current voice finishes.
+Pause/resume and mute affect the dubbed audio; leaving a conversation stops it.
+If generation or playback fails, the text stays visible and E continues normally.
+First-time generations use ElevenLabs text-to-speech credits. No live speech was
+generated during implementation tests. For public hosting, deploy this server route
+alongside the Scribe route with the same authenticated access as described above.
+
+
+All dubbing now uses `/api/dialogue-voice` (the older `/api/alien-voice` alias remains
+compatible). Apollo mission updates are queued rather than interrupting conversations.
+Verification feedback is text-only; incorrect attempts can immediately be retried with V.
+First generation of each voice/text pair uses ElevenLabs credits; repeats are cached
+for the current server session. A static deployment still requires the authenticated
+server endpoint described above. Restart `npm run dev` after updating this integration.
+
+
+Correct spoken player lines now automatically display and dub the alien's response.
+There is no Apollo confirmation or extra E press after verification. Incorrect attempts
+stay on the same player line with visible corrections; press V to repeat immediately.
+Verification feedback is text-only. E still advances later dialogue after its voice ends.
