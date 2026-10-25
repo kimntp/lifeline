@@ -40,7 +40,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
         <source src="/assets/space-home.mp4" type="video/mp4">
       </video>
       <section class="menu-card" aria-labelledby="menu-title">
-        <div id="logo-placeholder" class="logo-placeholder" aria-label="Your logo placeholder">YOUR LOGO</div>
+        <img id="home-logo" class="home-logo" src="/assets/lifelinelogo.png" alt="Lifeline" width="900" height="200">
         <p class="menu-eyebrow" id="menu-eyebrow" hidden></p>
         <h1 id="menu-title" tabindex="-1">Lifeline</h1>
         <p id="menu-description" class="menu-description" hidden></p>
@@ -58,7 +58,8 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
             <div><dt>Shift</dt><dd>Sprint</dd></div>
             <div><dt>Space</dt><dd>Jump</dd></div>
             <div><dt>Mouse / scroll</dt><dd>Look / zoom</dd></div>
-            <div><dt>E</dt><dd>Talk to aliens / continue</dd></div>
+            <div><dt>E</dt><dd>Talk / collect sample / deposit</dd></div>
+            <div><dt>Q</dt><dd>Open / close objectives</dd></div>
             <div><dt>H</dt><dd>Mining swing</dd></div>
             <div><dt>F</dt><dd>Toggle free camera</dd></div>
             <div><dt>P / Esc</dt><dd>Pause and release mouse</dd></div>
@@ -166,7 +167,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
       element("game-menu").classList.toggle("home-screen", home);
       element("game-menu").classList.toggle("preview-screen", animations);
       element("pause-button").hidden = session.paused;
-      element("logo-placeholder").hidden = !home;
+      element("home-logo").hidden = !home;
       element("menu-eyebrow").textContent = home ? "" : "LIFELINE";
       element("menu-eyebrow").hidden = home;
       element("menu-title").textContent = home ? "Lifeline" : paused ? "Paused" : instructions ? "Instructions" : "Animations";

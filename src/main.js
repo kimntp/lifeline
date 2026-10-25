@@ -12,11 +12,15 @@ import { resolveBaseCollision, resolvePlatformCollision } from "./base-collision
 import { buildGardenColony } from "./garden-colony.js";
 import { createColonyInteraction } from "./colony-interaction.js";
 import { createAlienLoader, prepareAlienModel } from "./alien-farmers.js";
+import { GardenMission } from "./garden-mission.js";
+import { createSampleStation } from "./sample-station.js";
 
 const session = new GameSession();
 const BASE_SPAWN_STORAGE_KEY = "lifeline:level-1:base-spawn";
 const PLAYER_SPAWN_STORAGE_KEY = "lifeline:level-1:player-spawn";
 const COLONY_STORAGE_KEY = "lifeline:level-1:garden-colony";
+// A reload starts a fresh survey; only world placement preferences persist.
+const gardenMission = new GardenMission();
 
 const shared = {
   scene: null,
@@ -24,6 +28,7 @@ const shared = {
   camera: null,
   city: null,
   spaceBase: null,
+  sampleStation: null,
   colony: null,
   colonyModels: null,
   colonyInteraction: null,
@@ -44,6 +49,7 @@ const flags = {
   gravity: false,
   movement: false,
   cameraFollow: false,
+  missionTransition: false,
 };
 
 function worldGroundHeight(x, z) {
@@ -125,9 +131,10 @@ function startPreview() {
     const delta = Math.min(clock.getDelta(), 0.1);
 
     // Execute every registered per-frame feature callback in sequence
-    if (!session.paused) {
+    if (shared.sampleStation) shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission);
+    if (!session.paused && !flags.missionTransition) {
       for (const fn of _previewFns) fn(delta);
-    } else if (session.screen === "animations" && shared.stateMachine?.preview) {
+    } else if (!flags.missionTransition && session.screen === "animations" && shared.stateMachine?.preview) {
       // Only the selected preview animates; gameplay remains frozen.
       shared.mixer.update(delta);
     }
@@ -301,6 +308,19 @@ async function loadSpaceBase() {
     // Use the default level placement if storage is unavailable or stale.
   }
   shared.scene.add(shared.spaceBase);
+  shared.sampleStation = createSampleStation();
+  shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission);
+  shared.scene.add(shared.sampleStation.group);
+}
+
+function createSurveyInteraction(colony) {
+  return createColonyInteraction(colony, {
+    mission: gardenMission,
+    onSample: () => { _loopShared.hit = true; },
+    onDeposit: depositSurveySamples,
+    getBaseTarget: () => shared.sampleStation?.target,
+    getFootOffset: () => shared.playerFootOffset,
+  });
 }
 
 async function loadGardenColony() {
@@ -323,7 +343,7 @@ async function loadGardenColony() {
     shared.colony = buildGardenColony(options);
   }
   shared.scene.add(shared.colony.group);
-  shared.colonyInteraction = createColonyInteraction(shared.colony);
+  shared.colonyInteraction = createSurveyInteraction(shared.colony);
   addPreviewFn(delta => shared.colony.update(delta), 51);
   addPreviewFn(() => {
     if (shared.player) shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
@@ -384,7 +404,7 @@ function step3_cityMovement() {
 
   // Mouse move drives either third-person yaw/pitch or free-orbit around city center
   document.addEventListener("mousemove", (e) => {
-    if (!locked || session.paused) return;
+    if (!locked || session.paused || flags.missionTransition) return;
     if (flags.cameraFollow) {
       // Third-person mode: accumulate yaw/pitch from mouse delta
       look.yaw -= e.movementX * look.sensitivity;
@@ -416,7 +436,7 @@ function step3_cityMovement() {
   renderer.domElement.addEventListener(
     "wheel",
     (e) => {
-      if (!locked || session.paused) return;
+      if (!locked || session.paused || flags.missionTransition) return;
       if (flags.cameraFollow) {
         // Third-person: zoom distance relative to player (2–20 units)
         const next = shared.cameraDistance + e.deltaY * 0.01;
@@ -582,7 +602,7 @@ function step7_movement() {
       this.keys = {};
       this.justPressed = new Set();
       this._kd = (e) => {
-        if (session.paused) return;
+        if (session.paused || flags.missionTransition) return;
         if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
         if (!this.keys[e.code]) this.justPressed.add(e.code);
         this.keys[e.code] = true;
@@ -879,7 +899,7 @@ function pauseGame() {
 }
 
 function requestPlay() {
-  if (!session.ready || !shared.renderer || gameMenu.transitioning) return;
+  if (!session.ready || !shared.renderer || gameMenu.transitioning || flags.missionTransition) return;
   clearGameInput();
   gameMenu.status("");
   try {
@@ -956,7 +976,7 @@ function moveColonyHere() {
   previous.dispose();
   shared.colony = next;
   shared.scene.add(next.group);
-  shared.colonyInteraction = createColonyInteraction(next);
+  shared.colonyInteraction = createSurveyInteraction(next);
   shared.playerState.velocity.set(0, 0, 0);
   shared.playerState.grounded = true;
   shared.playerState.groundY = worldGroundHeight(location.x, location.z);
@@ -969,6 +989,49 @@ function moveColonyHere() {
     gameMenu.status("Garden colony moved here and saved for this level.");
   } catch {
     gameMenu.status("Colony moved here. Browser storage is unavailable, so it will reset on reload.");
+  }
+}
+
+async function depositSurveySamples() {
+  if (session.paused || flags.missionTransition || gameMenu.transitioning || !gardenMission.beginDeposit()) return;
+  flags.missionTransition = true;
+  clearGameInput();
+  try {
+    await gameMenu.transitionToGame(() => {
+      const spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, null);
+      shared.player.position.copy(spawn.position);
+      shared.player.position.y += shared.playerFootOffset;
+      shared.player.rotation.y = spawn.yaw;
+      shared.playerState.velocity.set(0, 0, 0);
+      shared.playerState.grounded = true;
+      shared.playerState.groundY = spawn.position.y;
+      shared.playerState.support = shared.spaceBase.userData.foundationBounds;
+      shared.look.yaw = spawn.cameraYaw;
+      shared.look.pitch = 0;
+      _loopShared.cameraMode = "third-person";
+      _loopShared.smoothInited = false;
+      _loopShared.prevPlayerPos = shared.player.position.clone();
+      shared.stateMachine.setPreview("");
+      shared.mixer.update(0);
+      shared.camera.position.set(shared.player.position.x, shared.player.position.y + 2.2,
+        shared.player.position.z + shared.cameraDistance);
+      shared.camera.lookAt(shared.player.position.x, shared.player.position.y + 1.2, shared.player.position.z);
+      gardenMission.finishDeposit();
+      shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission);
+      shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
+      try {
+        localStorage.setItem(PLAYER_SPAWN_STORAGE_KEY, JSON.stringify({ x: spawn.position.x, z: spawn.position.z,
+          yaw: spawn.yaw, cameraYaw: spawn.cameraYaw }));
+      } catch {}
+    });
+  } catch (error) {
+    console.error("[survey] Sample deposit transition failed:", error);
+  } finally {
+    // Esc, focus loss or a failed fade leaves the samples available to retry.
+    if (gardenMission.depositing) gardenMission.cancelDeposit();
+    shared.colonyInteraction.refresh();
+    flags.missionTransition = false;
+    clearGameInput();
   }
 }
 

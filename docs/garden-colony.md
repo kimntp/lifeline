@@ -17,8 +17,44 @@ farmers cannot be attacked. Hostile enemies and their combat system are removed.
 
 E starts a nearby farmer's conversation, advances it, and closes it after the
 last line. Walking away also closes it. Conversations pause that farmer's
-routine. Dialogue reveals the company's actual objective: enslave the farmers
-and export crops to Earth. Pause freezes the colony and hides its interaction UI.
+routine. The first level is peaceful: its dialogue explains growing conditions,
+sample collection, and the neighboring colony's water supply. The company's
+underlying objective remains background story data, outside this first survey.
+Pause freezes the colony and hides its interaction UI.
+
+## Peaceful first survey
+
+1. Talk to any farmer with E. The conversation explicitly asks how crops can
+   grow on Mars. Reading the explanation unlocks alien-reported statistics and
+   the objective checklist.
+
+Press Q (or use the Q Objectives button) to slide the objectives tab open or
+closed. New surveys initially show only “Talk to one of the aliens.” Sampling
+and water tasks appear after reading the growing-condition explanation.
+Apollo's radio message stays visible when the tab is closed.
+2. Near any crop bed, press E to collect a soil sample. Collect a tomato cutting
+   at a tomato bed and a wheat cutting at a wheat bed. Each sample is collected
+   once; crops remain alive. Sample prompts take priority over nearby chat.
+3. Talk again to ask about water. Farmers explain that they conserve water but
+   receive it from Ares Water Colony in exchange for crops. Its coordinates are
+   recorded in the local in-game survey grid; the second colony is not built
+   by this mission. Sampling and the water question may be completed in either
+   order after first contact.
+4. Once all three samples and water information are obtained, Apollo explicitly
+   directs the player to report back to base FIRST. Navigation switches to the
+   sample tray on the accessible foundation rim.
+5. At the tray, E deposits the samples. A fade to black freezes the world,
+   resets the astronaut and camera at the base, empties the sample case, and
+   reveals three deposited sample containers. The screen fades back into the
+   game with the mission COMPLETE, its readings and coordinates retained.
+   The player stays at base; neither the mission nor the home screen restarts.
+
+The readings (22 °C, 65% moisture, 96% soil restoration, 3× growth) are authored
+fictional gameplay values, labeled as alien-reported in-game readings. Apollo
+is the field-assistant radio/text interface. Reloading starts a fresh survey
+with the first contact objective and an empty sample case. Saved base, colony,
+and player spawn locations remain in place. Canceling the fade before deposit
+commits leaves the current session's samples available for another try.
 
 The colony is located on a suitable terrain patch near the base. A HUD shows
 its distance and direction relative to the camera. Crop beds participate in

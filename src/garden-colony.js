@@ -11,16 +11,16 @@ const CONVERSATIONS = [
   { name: "Iri", role: "Soilkeeper", lines: [
     "Welcome to Gale Crater, our Garden Colony. These beds were barren dust before we arrived.",
     "We regenerate the soil and guide the roots. Tomatoes and wheat grow in days when we tend them together.",
-    "The company promised us a home. Now its guards say we cannot leave until the harvest quotas are met.",
+    "You are welcome to study the garden. Please take only small samples so the plants can keep growing.",
   ] },
   { name: "Vela", role: "Grower", lines: [
     "Watch the young shoots. Our touch helps them grow, but even living soil needs rest.",
     "The hab dome is our shelter. We go inside to rest and collect supplies, then return to the crops.",
-    "Every cargo shipment goes to Earth. The company calls us partners, but forcing farmers to work without freedom is slavery.",
+    "We exchange crops for water with another colony. Our neighbors help keep this garden alive.",
   ] },
   { name: "Naru", role: "Seedkeeper", lines: [
     "I save seeds from the wheat and tomatoes. A colony needs more than a single harvest to survive.",
-    "The company wants our ability, not our well-being: enslave the farmers, export the crops, keep Earth supplied.",
+    "Our abilities create the growing conditions these seeds need. Sharing what we know helps both our peoples.",
     "Please remember that this garden belongs to the people who make it live.",
   ] },
 ];

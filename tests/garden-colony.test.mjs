@@ -112,7 +112,7 @@ test("talking holds a farmer in place and hidden farmers cannot be selected", ()
   worker.talking = false;
 });
 
-test("E opens, advances and closes dialogue, revealing the colony's company objective", () => {
+test("E shares peaceful growing-condition dialogue and closes when walking away", () => {
   // Small DOM fixture exercises interaction state without requiring WebGL.
   const elements = new Map();
   const root = { hidden: true, set innerHTML(value) {
@@ -124,21 +124,24 @@ test("E opens, advances and closes dialogue, revealing the colony's company obje
   try {
     const worker = colony.workers[1];
     worker.phase = "tend"; worker.visual.visible = true; worker.talking = false;
+    worker.visual.position.set(colony.site.x, colony.heightAt(colony.site.x, colony.site.z - 1), colony.site.z - 1);
     const player = { position: worker.visual.position.clone() };
     let pressed = false;
-    const keyboard = { consumeJustPressed(code) { assert.equal(code, "KeyE"); const value = pressed; pressed = false; return value; } };
+    const keyboard = { consumeJustPressed(code) { if (code === "KeyQ") return false; assert.equal(code, "KeyE"); const value = pressed; pressed = false; return value; } };
     const interaction = createColonyInteraction(colony);
     interaction.setVisible(true);
     interaction.update(player, keyboard);
     assert.ok(elements.get("#colony-talk-prompt").textContent.includes(worker.profile.name));
     const lines = [];
-    for (let i = 0; i < worker.profile.lines.length; i++) {
+    for (let i = 0; i < 4; i++) {
       pressed = true;
       interaction.update(player, keyboard);
       assert.equal(worker.talking, true);
       lines.push(elements.get("#colony-dialogue-text").textContent);
     }
-    assert.ok(lines.join(" ").includes("slavery"));
+    assert.ok(lines.join(" ").includes("regenerate the soil"));
+    assert.ok(lines.join(" ").includes("peaceful"));
+    assert.equal(elements.get("#mission-conditions").hidden, false);
     pressed = true;
     interaction.update(player, keyboard);
     assert.equal(worker.talking, false);
