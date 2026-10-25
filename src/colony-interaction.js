@@ -6,7 +6,7 @@ import { dialogueSession } from "./dialogue-session.js";
 import { GARDEN_COLONY, nearestGardenWorker } from "./garden-colony.js";
 import { GardenMission, GROWING_CONDITIONS, nearestSamplePlot, surveyDialogue } from "./garden-mission.js";
 
-export function createColonyInteraction(colony, { mission = new GardenMission(), onProgress, onSample, onDeposit, onApolloMessage,
+export function createColonyInteraction(colony, { mission = new GardenMission(), onProgress, onSample, onDeposit,
   getBaseTarget = () => null, getFootOffset = () => 0, channel = dialogueSession, speechFactory = createSpeechChallenge, dubbingFactory = createAlienDubbing } = {}) {
   const conversationOwner = {};
   const root = document.createElement("div");
@@ -14,8 +14,8 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
   root.hidden = true;
   root.innerHTML = `
     <div class="colony-location">
-      <p class="colony-eyebrow">REGION 01 · PEACEFUL CONTACT</p>
-      <h2></h2><p id="colony-distance"></p>
+      <p class="colony-eyebrow">REGION 01</p>
+      <h2></h2><p id="colony-distance" hidden></p>
     </div>
     <button id="objectives-toggle" class="objectives-toggle" type="button" aria-controls="mission-panel" aria-expanded="false">Q · Objectives</button>
     <aside id="mission-panel" class="mission-panel" aria-label="Garden colony field survey" aria-hidden="true">
@@ -36,10 +36,11 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
       <p id="colony-speaker" class="colony-eyebrow"></p>
       <p id="colony-dialogue-text" aria-live="polite"></p>
       <div id="speech-verification" hidden>
-        <p class="speech-instructions">Read the line aloud. Matched words glow green. V starts/cancels the microphone. Audio is sent to ElevenLabs.</p>
-        <p id="speech-transcript"></p>
-        <p id="speech-feedback" role="status" aria-live="polite"></p>
-        <p id="speech-differences"></p>
+        <p class="speech-instructions">Press V to speak and repeat the words. They will glow lavender when correct.</p>
+        <p id="speech-mic-status" class="speech-mic-status" role="status" aria-live="polite" hidden></p>
+        <p id="speech-transcript" hidden></p>
+        <p id="speech-feedback" role="status" aria-live="polite" hidden></p>
+        <p id="speech-differences" hidden></p>
       </div>
       <p id="colony-dialogue-hint" class="colony-dialogue-hint">E — continue · Walk away to leave</p>
     </section>`;
@@ -52,18 +53,24 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
   let conversation = null, lines = [], line = 0, renderedRevision = -1, objectivesOpen = false;
   let objectivesIntroduced = false, surveyIntroduced = mission.explained;
   let visible = false;
-  let lastMissionMessage = null;
   const dubbing = dubbingFactory({ owner: conversationOwner, site: colony.site, onChange: state => {
     if (!conversation || !lines[line]?.dub) return;
     const nextHint = "E - continue / Walk away to leave";
     element("colony-dialogue-hint").textContent = state.status === "loading" ? "Preparing voice..."
-      : state.status === "playing" ? "Speaking... E continues when the reply finishes."
+      : state.status === "playing" ? "Speaking... Press Enter to reveal the full line and stop the voice."
       : state.status === "paused" ? "Voice paused. Resume the game to continue."
       : state.status === "error" ? `Voice unavailable. ${nextHint}`
       : nextHint;
   } });
   const speech = speechFactory({ connect: connectSpeechAttempt, onChange: state => {
     renderSpeechWords(element("colony-dialogue-text"), state);
+    const mic = element("speech-mic-status");
+    const micText = state.status === "connecting" ? "Connecting microphone... Please wait."
+      : state.status === "listening" ? "MIC LIVE - Speak now" : "";
+    mic.hidden = !micText;
+    if (mic.textContent !== micText) mic.textContent = micText;
+    mic.setAttribute?.("data-state", state.status);
+    element("speech-feedback").hidden = state.status !== "error";
     element("speech-transcript").textContent = state.transcript ? `You said: ${state.transcript}` : "";
     if (element("speech-feedback").textContent !== state.message) element("speech-feedback").textContent = state.message;
     element("speech-differences").textContent = [
@@ -103,10 +110,6 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
     element("mission-water").hidden = !mission.waterKnown;
     if (mission.waterKnown) element("mission-water").textContent = `Ares Water Colony · X ${mission.coordinates.x}, Z ${mission.coordinates.z} · local survey grid`;
     element("mission-apollo").textContent = mission.apolloMessage;
-    if (mission.apolloMessage !== lastMissionMessage) {
-      lastMissionMessage = mission.apolloMessage;
-      onApolloMessage?.(mission.apolloMessage);
-    }
     if (mission.completed) { root.hidden = true; close(); }
   }
   function progress(changed) { if (changed) onProgress?.(); }
@@ -123,6 +126,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
     const entry = lines[line];
     speech.reset(entry.requiresSpeech ? entry.text : "");
     element("speech-verification").hidden = !entry.requiresSpeech;
+    element("colony-dialogue-hint").hidden = Boolean(entry.requiresSpeech);
     element("colony-dialogue-hint").textContent = entry.requiresSpeech
       ? "Speak the complete line before continuing. Walk away to leave."
       : "E - continue / Walk away to leave";
@@ -145,9 +149,19 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
     leave: close,
     destroy() { close(); speech.destroy(); dubbing.destroy(); root.remove(); },
     refresh: renderMission,
+    handleSkip() {
+      if (!visible || !conversation || lines[line]?.requiresSpeech) return false;
+      if (dubbing.busy) dubbing.complete();
+      else {
+        line++;
+        if (line >= lines.length) close();
+        else showLine();
+      }
+      return true;
+    },
     setVisible(nextVisible) {
       nextVisible = nextVisible && !mission.completed;
-      if (visible && !nextVisible) speech.cancel();
+      if (visible && !nextVisible) { speech.cancel(); }
       dubbing.setPaused(!nextVisible);
       visible = nextVisible;
       root.hidden = !nextVisible;

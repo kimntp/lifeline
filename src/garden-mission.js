@@ -20,7 +20,7 @@ export class GardenMission {
     this.apolloMessage = this.completed ? "Survey complete. Samples are safely deposited at base; the water colony coordinates are archived."
       : this.readyToReport ? this.returnMessage
       : this.explained ? "Continue the peaceful survey: collect the three samples and ask a farmer where the water comes from."
-      : "Peaceful contact only. Ask a farmer how they grow crops in this Martian environment.";
+      : "Ask a farmer how they grow crops in this Martian environment.";
   }
 
   get readyToReport() { return this.explained && this.waterKnown && Object.values(this.samples).every(Boolean); }
@@ -101,7 +101,7 @@ export function surveyDialogue(mission, profile, site) {
     { speaker: "You", requiresSpeech: true, text: "How are you able to grow tomatoes and wheat in this Mars environment?" },
     { speaker: farmer, dub: true, text: "Our abilities generate the conditions the roots need. We regenerate the soil, balance its nutrients, regulate a warm local climate, and hold moisture around the plants. We help the crops grow; we do not force them." },
     { speaker: farmer, dub: true, text: "Our growing fields are around 22 degrees, with 65 percent root-zone moisture. We restore about 96 percent of the soil's growing potential, and our crops grow about three times as fast. You have our permission to take a small soil sample and a cutting from each crop.", effect: "growth" },
-    { dub: true, voiceSpeaker: "Apollo", speaker: "Apollo — Field assistant", text: "Alien-reported readings logged. Survey objectives added: collect soil, tomato, and wheat samples, and ask the farmers about their water supply. Keep this visit peaceful." },
+    { dub: true, voiceSpeaker: "Apollo", speaker: "Apollo — Field assistant", text: "Alien-reported readings logged. I have updated your objectives." },
   ];
   if (!mission.waterKnown) {
     const coordinates = mission.waterDestination(site);

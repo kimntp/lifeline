@@ -6,10 +6,10 @@ export function createDialogueDubbing({ owner, site = { x: 0, z: 0 }, onChange =
   makeUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url),
 }) {
   let generation = 0, audio = null, url = null, abort = null, paused = true, detachCaptions = null;
-  let status = "idle";
+  let status = "idle", currentEntry = null, currentSpeaker = null;
   const emit = next => { status = next; onChange({ status, busy: ["loading", "playing", "paused"].includes(status) }); };
-  const cleanup = () => {
-    detachCaptions?.(); detachCaptions = null;
+  const cleanup = (keepCaptions = false) => {
+    if (!keepCaptions) { detachCaptions?.(); detachCaptions = null; }
     abort?.abort(); abort = null;
     if (audio) { unregister(audio); audio.removeAttribute("src"); audio.load(); audio = null; }
     if (url) { revokeUrl(url); url = null; }
@@ -30,6 +30,15 @@ export function createDialogueDubbing({ owner, site = { x: 0, z: 0 }, onChange =
     get busy() { return ["loading", "playing", "paused"].includes(status); },
     stop() { generation++; cleanup(); emit("idle"); },
     destroy() { generation++; cleanup(); },
+    complete() {
+      if (!["loading", "playing", "paused"].includes(status) || !currentEntry) return false;
+      generation++;
+      if (!detachCaptions) detachCaptions = onAudio(null, currentEntry, currentSpeaker);
+      detachCaptions?.complete?.();
+      cleanup(true);
+      emit("completed");
+      return true;
+    },
     setPaused(value) {
       paused = value;
       if (paused && audio && status === "playing") { audio.pause(); emit("paused"); }
@@ -38,15 +47,23 @@ export function createDialogueDubbing({ owner, site = { x: 0, z: 0 }, onChange =
     async start(entry, farmer) {
       generation++; cleanup();
       const attempt = generation;
+      currentEntry = entry; currentSpeaker = farmer;
       abort = new AbortController();
       emit("loading");
       try {
         const response = await request(`${import.meta.env?.BASE_URL ?? "/"}api/dialogue-voice`, {
           method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.any([abort.signal, AbortSignal.timeout(60000)]),
-          body: JSON.stringify({ text: entry.text, farmer, site }),
+          body: JSON.stringify({ text: entry.text, farmer, site, includeTimestamps: farmer === "Apollo" }),
         });
         if (!response.ok) throw new Error("Voice unavailable");
-        const blob = await response.blob();
+        let blob;
+        if (response.headers?.get("Content-Type")?.includes("application/json")) {
+          const data = await response.json();
+          const bytes = Uint8Array.from(atob(data.audioBase64), character => character.charCodeAt(0));
+          blob = new Blob([bytes], { type: "audio/mpeg" });
+          entry = { ...entry, cues: data.cues };
+          if (attempt === generation) currentEntry = entry;
+        } else blob = await response.blob();
         if (attempt !== generation) return;
         url = makeUrl(blob);
         audio = register(audioFactory(), { owner, holdChannel: true, animateCompanion: farmer === "Apollo" });

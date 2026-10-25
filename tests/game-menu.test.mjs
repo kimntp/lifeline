@@ -119,7 +119,8 @@ test("home screen renders its real logo and start button, then switches to pause
     assert.equal(elements.get("home-ship").hidden, true);
     assert.equal(elements.get("home-transmission").hidden, true);
     session.pause(); menu.render();
-    assert.equal(elements.get("home-logo").hidden, true);
+    assert.equal(elements.get("home-logo").hidden, false);
+    assert.equal(elements.get("menu-eyebrow").hidden, true);
     assert.equal(elements.get("home-background").hidden, true);
     assert.equal(elements.get("instructions-button").hidden, false);
     assert.equal(elements.get("play-label").textContent, "Resume");

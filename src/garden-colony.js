@@ -1,20 +1,14 @@
+import { FARMERS } from "./farmer-profiles.mjs";
 import * as THREE from "three";
 import { createAlienFarmer } from "./alien-farmers.js";
 
 export const GARDEN_COLONY = {
-  name: "Gale Crater — Garden Colony",
+  name: "Gale Crater - Garden Colony",
   ability: "Regenerate soil and accelerate plant growth",
   disposition: "peaceful",
 };
 
-const FARMERS = [
-  { name: "Iri", role: "Soilkeeper" },
-  { name: "Vela", role: "Grower" },
-  { name: "Naru", role: "Seedkeeper" },
-  { name: "Seli", role: "Grower" },
-  { name: "Tavi", role: "Soilkeeper" },
-  { name: "Oru", role: "Seedkeeper" },
-];
+
 
 function normalizedModel(source, height) {
   const model = source.clone(true);

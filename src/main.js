@@ -1,3 +1,4 @@
+import { createMinimap } from "./minimap.js";
 import { ICE_ASSETS, buildIceBase } from "./ice-base.js";
 import { createPlayerVitals } from "./player-vitals.js";
 import { createApolloNarrator } from "./apollo-narrator.js";
@@ -91,6 +92,7 @@ function atIceColony(position) {
 }
 
 let updatePlayerVitals = null;
+let minimap = null;
 let _previewId = null;
 let _previewing = false;
 const _previewFns = [];
@@ -179,6 +181,13 @@ function startPreview() {
     updateWorldProgression();
     apolloNarrator?.setPaused(session.paused || flags.missionTransition);
     apolloNarrator?.update();
+    minimap?.update({
+      player: shared.player?.position, yaw: shared.player?.rotation.y,
+      base: shared.spaceBase?.userData.foundationBounds?.getCenter(new THREE.Vector3()) ?? LEVEL_LAYOUT.base,
+      colony1: shared.colony?.site ?? LEVEL_LAYOUT.garden,
+      colony2: shared.iceBase?.location ?? LEVEL_LAYOUT.ice,
+      phase2: gardenMission.completed, returning: gardenMission.readyToReport && !gardenMission.completed,
+    }, !session.paused && !flags.missionTransition && !shared.iceAftermath);
     updatePlayerVitals?.(!session.paused);
     shared.colonyInteraction?.setVisible(!session.paused && !gardenMission.completed);
     shared.iceInteraction?.setVisible(!session.paused && gardenMission.completed && !shared.iceAftermath && !flags.missionTransition);
@@ -350,7 +359,6 @@ async function loadSpaceBase() {
 function createSurveyInteraction(colony) {
   return createColonyInteraction(colony, {
     mission: gardenMission,
-    onApolloMessage: text => apolloNarrator?.say(text),
     onSample: () => { _loopShared.hit = true; },
     onDeposit: depositSurveySamples,
     getBaseTarget: () => shared.sampleStation?.target,
@@ -637,6 +645,12 @@ function step7_movement() {
       this.justPressed = new Set();
       this._kd = (e) => {
         if (session.paused || flags.missionTransition) return;
+        if (["Enter", "NumpadEnter"].includes(e.code)) {
+          e.preventDefault();
+          if (!e.repeat && !apolloNarrator?.handleSkip()) shared.colonyInteraction?.handleSkip();
+          return;
+        }
+        if (e.code === "KeyE" && e.repeat) return;
         if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
         if (!this.keys[e.code]) this.justPressed.add(e.code);
         this.keys[e.code] = true;
@@ -893,6 +907,7 @@ async function main() {
   // step 1
   await step1_sceneSetup();
   updatePlayerVitals = createPlayerVitals(shared.playerState);
+  minimap = createMinimap();
   apolloNarrator = createApolloNarrator();
   startPreview();
   createOrangeBotOverlay().then((render) => addPreviewFn(render, 100))

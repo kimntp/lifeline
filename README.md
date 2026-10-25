@@ -446,3 +446,28 @@ Correct spoken player lines now automatically display and dub the alien's respon
 There is no Apollo confirmation or extra E press after verification. Incorrect attempts
 stay on the same player line with visible corrections; press V to repeat immediately.
 Verification feedback is text-only. E still advances later dialogue after its voice ends.
+
+
+Apollo uses the expressive Eleven v4 model with audio tags: `[laughs]` in the intro
+requests performed laughter rather than reading a stage direction. His voice ID stays
+the same across all lines; farmers continue to use Flash v2.5. Audio cache keys include
+the model so a Flash rendering cannot be reused for an expressive Apollo line.
+
+
+## Fast dialogue and stable Apollo captions
+
+Press **Enter** while a voice is loading or playing to stop that voice
+and reveal the complete current message. The first press completes the text without advancing;
+press Enter again to continue. Apollo announcements keep their conversation lock until
+that completed text is dismissed. Player speech-verification lines cannot be skipped.
+
+Apollo audio now requests ElevenLabs character timing alongside the generated speech.
+Caption pages change only at real sentence boundaries, and words follow provider timing.
+The fallback captioner also keeps sentences intact and does not rescale an active
+message when browser duration metadata changes. Restart the dev server to enable the
+updated timed-audio response.
+
+
+Objective-panel updates are text-only and no longer enqueue Apollo narration. His
+conversation acknowledgement does not read the objective list aloud. The initial
+objective hint omits the previous "Peaceful contact only" prefix.
