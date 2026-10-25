@@ -38,14 +38,14 @@ test("four guards march in, knock the astronaut down, and Apollo glitches into a
   let cutscene, routingActors;
   try {
     cutscene = createIceAftermath({ alien: { visual }, player: source, scene: world, camera, ground: { heightAt: () => 0 }, channel, dubbingFactory: () => ({ busy: false, start(entry) { spoken.push(entry.speechText ?? entry.text); }, stop() { cancelled++; }, destroy() {}, setPaused(value) { if (value) paused++; } }), onDirectContact: () => directContacts++ });
-    assert.equal(channel.busy, true); assert.equal(cutscene.phase, "pain");
+    assert.equal(channel.busy, true); assert.equal(cutscene.phase, "pain"); assert.equal(cutscene.musicMood, "sad");
     let finished = false; cutscene.finished.then(() => { finished = true; });
     const pressE = () => listeners.get("keydown")({ code: "KeyE" });
     cutscene.update(0.1, true); cutscene.update(0.1, true);
     assert.equal(spoken.length, 1); assert.ok(spoken[0].includes(ALIEN_PAIN_LINE));
     pressE(); await Promise.resolve(); assert.equal(finished, false, "E cannot skip the guard sequence");
     cutscene.update(2, false); assert.equal(paused, 1); assert.equal(cutscene.phase, "pain");
-    cutscene.update(3, true); assert.equal(cutscene.phase, "march");
+    cutscene.update(3, true); assert.equal(cutscene.phase, "march"); assert.equal(cutscene.musicMood, "unsettling");
     assert.equal(cutscene.actors.guards.length, 4);
     const starts = cutscene.actors.guards.map(guard => guard.visual.position.clone());
     cutscene.update(2, true);
@@ -62,7 +62,7 @@ test("four guards march in, knock the astronaut down, and Apollo glitches into a
     cutscene.update(1.7, true); assert.equal(cutscene.phase, "glitch");
     assert.equal(classes.has("apollo-glitch"), true);
     cutscene.update(5, false); assert.equal(cutscene.phase, "glitch"); assert.equal(classes.has("apollo-glitch"), false);
-    cutscene.update(3, true); assert.equal(cutscene.phase, "dialogue");
+    cutscene.update(3, true); assert.equal(cutscene.phase, "dialogue"); assert.equal(cutscene.musicMood, "sad");
     assert.equal(directContacts, 1);
     assert.equal(classes.has("apollo-glitch"), false);
     assert.match(elements.get("#aftermath-link").textContent, /DIRECT ALIEN CHANNEL/);

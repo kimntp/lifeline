@@ -8,7 +8,7 @@ export function shouldUseUnsettlingMusic({ cutscene = false, alienPhase } = {}) 
 // Music is independent of the dialogue channel so it can accompany spoken lines.
 export function createBackgroundMusic({ audioFactory = () => new Audio(), subscribe = subscribeAudioState,
   baseUrl = import.meta.env?.BASE_URL ?? "/", volume = OST_VOLUME, fadeSeconds = 1.5 } = {}) {
-  const tracks = ["Normal Mix.mp3", "Unsettling Mix.mp3"].map(name => {
+  const tracks = ["Normal Mix.mp3", "Unsettling Mix.mp3", "Credits Mix.mp3", "Sad Mix.mp3"].map(name => {
     const audio = audioFactory();
     audio.src = `${baseUrl}assets/${encodeURIComponent(name)}`;
     audio.loop = true; audio.preload = "none"; audio.volume = 0;
@@ -35,13 +35,14 @@ export function createBackgroundMusic({ audioFactory = () => new Audio(), subscr
     });
   }
   return {
-    update(delta, { active: playing, homeScreen: home = false, unsettling = false, dialogue = false } = {}) {
+    update(delta, { active: playing, homeScreen: home = false, unsettling = false, dialogue = false, credits = false, mood } = {}) {
       if (disposed) return;
       homeScreen = Boolean(home);
       active = Boolean(playing || homeScreen);
       if (!active || suspended()) { for (const { audio } of tracks) audio.pause(); return; }
       const step = Math.max(0, Math.min(delta, 0.25)); elapsed += step;
-      const selected = unsettling && !homeScreen ? 1 : 0;
+      const selected = credits ? 2 : homeScreen ? 0 : mood === "sad" ? 3
+        : mood === "normal" ? 0 : mood === "unsettling" || unsettling ? 1 : 0;
       for (const [index, track] of tracks.entries()) {
         const target = index === selected ? 1 : 0;
         const change = fadeSeconds > 0 ? step / fadeSeconds : 1;

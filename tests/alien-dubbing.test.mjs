@@ -180,6 +180,7 @@ test("player lines and speech challenges never request or play dubbing", async (
   const f = fixture({ request: async () => { requests++; return response(); } });
   await f.dub.start({ speaker: "You", text: "I will help." }, "You");
   await f.dub.start({ speaker: "Player", requiresSpeech: true, text: "Please share your methods." }, "Iri");
+  await f.dub.start({ speaker: "You - Inner thoughts", innerThought: true, text: "Are they really asleep?" }, "Apollo");
   assert.equal(requests, 0);
   assert.equal(f.clips.length, 0);
   assert.equal(f.dub.busy, false);

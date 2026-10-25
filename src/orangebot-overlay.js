@@ -112,6 +112,7 @@ export async function createOrangeBotOverlay() {
   document.body.appendChild(renderer.domElement);
   const resize = () => {
     const { width, height } = renderer.domElement.getBoundingClientRect();
+    if (width < 1 || height < 1) return;
     renderer.setPixelRatio(pixelRatio());
     renderer.setSize(width, height, false);
     camera.aspect = width / height;

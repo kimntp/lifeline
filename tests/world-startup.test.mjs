@@ -7,7 +7,7 @@ import { LEVEL_LAYOUT } from "../src/level-layout.js";
 import { GameSession } from "../src/game-menu.js";
 import { GardenMission } from "../src/garden-mission.js";
 import { ASTRONAUT_CLIPS } from "../src/astronaut-animations.js";
-import { placeSpaceBase, getPlayerSpawn } from "../src/space-base.js";
+import { placeSpaceBase, getPlayerSpawn, getBaseSpawn } from "../src/space-base.js";
 import { resolveBaseCollision, resolvePlatformCollision } from "../src/base-collision.js";
 import { createSampleStation } from "../src/sample-station.js";
 import { ICE_ASSETS, buildIceBase } from "../src/ice-base.js";
@@ -31,15 +31,20 @@ test("world startup wires a fresh mission, base sample station and deposit callb
     }
   }
   const noop = () => {};
-  let transitions = 0, montageDisposed = false, finishMontage;
+  let transitions = 0, montageDisposed = false, finishMontage, finishFinalDialogue, finishRest;
+  const restDone = new Promise(resolve => { finishRest = resolve; });
+  const finalDialogue = new Promise(resolve => { finishFinalDialogue = resolve; });
   const montageDone = new Promise(resolve => { finishMontage = resolve; });
-  const menuHarness = { render: noop, transitioning: false, async transitionToGame(fn) { fn(); transitions++; } };
+  const menuHarness = { render: noop, status: noop, transitioning: false, async transitionToGame(fn) { fn(); transitions++; } };
   const bodyClasses = new Set();
-  const api = vm.runInNewContext(`${source}\n({ shared, session, loadSpaceBase, placeIceBase, updateWorldProgression, updateColonyInteraction, selectPlayerTool, createSurveyInteraction, step9_collision, callbacks: _previewFns, loop: _loopShared, depositSurveySamples, getFlags: () => flags, getMission: () => gardenMission });`, {
-    THREE, GameSession, GardenMission, ASTRONAUT_CLIPS, placeSpaceBase, getPlayerSpawn, createSampleStation, LEVEL_LAYOUT,
+  const api = vm.runInNewContext(`${source}\n({ shared, session, loadSpaceBase, placeIceBase, updateWorldProgression, updateColonyInteraction, selectPlayerTool, createSurveyInteraction, step9_collision, callbacks: _previewFns, loop: _loopShared, depositSurveySamples, playIceAftermath, getFlags: () => flags, getMission: () => gardenMission });`, {
+    THREE, GameSession, GardenMission, ASTRONAUT_CLIPS, placeSpaceBase, getPlayerSpawn, getBaseSpawn, createSampleStation, LEVEL_LAYOUT,
     FBXLoader: AssetLoader, ICE_ASSETS, buildIceBase, resolveBaseCollision, resolvePlatformCollision, dialogueSession: { busy: false },
     createColonyInteraction(_colony, options) { interactionOptions = options; return {}; },
     createGameMenu: () => menuHarness,
+    createIceAftermath: () => ({ finished: finalDialogue, dispose: noop }),
+    createBaseRest: () => ({ finished: restDone, dispose: noop }),
+    createWakingDialogue: () => ({ finished: Promise.resolve(), dispose: noop }),
     createBackgroundMusic: () => ({ update: noop }), createPlayerSounds: () => ({ update: noop, swingBaton: noop }),
     createSurveyMontage() {
       assert.equal(api.getMission().completed, true, "Sample deposit commits before the montage");
@@ -126,13 +131,27 @@ test("world startup wires a fresh mission, base sample station and deposit callb
   const deposit = api.depositSurveySamples();
   await Promise.resolve();
   assert.ok(api.shared.surveyMontage, "Phase-one turn-in opens the regional montage");
+  assert.equal(bodyClasses.has("survey-cinematic"), false, "Acknowledgment and rest happen before the nightmare");
+  assert.equal(transitions, 1);
+  finishRest(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(bodyClasses.has("survey-cinematic"), true);
-  assert.equal(transitions, 1, "Montage remains on screen until finished or skipped");
+  assert.equal(transitions, 2, "The nightmare starts only after the player goes to sleep");
   finishMontage(); await deposit;
-  assert.equal(transitions, 2, "A second fade returns to gameplay");
+  assert.equal(transitions, 3, "The final fade returns from the nightmare");
   assert.equal(montageDisposed, true); assert.equal(api.shared.surveyMontage, null);
   assert.equal(bodyClasses.size, 0); assert.equal(api.getFlags().missionTransition, false);
   assert.equal(mission.completed, true); assert.deepEqual(mission.inventory, []);
   assert.equal(api.shared.player.position.x, LEVEL_LAYOUT.spawn.x);
   assert.equal(api.shared.player.position.z, LEVEL_LAYOUT.spawn.z);
+  api.shared.iceInteraction = { leave: noop };
+  api.shared.iceEncounter = { lastAlien: {}, occluders: [] };
+  const ending = api.playIceAftermath();
+  await Promise.resolve();
+  assert.equal(api.session.screen, "playing", "Ending must wait for the final dialogue");
+  finishFinalDialogue(); await ending;
+  assert.equal(api.session.screen, "ending");
+  assert.equal(api.session.paused, true);
+  assert.equal(api.shared.iceAftermath, null);
+  assert.equal(api.getFlags().missionTransition, false);
+
 });

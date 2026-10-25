@@ -1,4 +1,4 @@
-import { SURVEY_NARRATION } from "../src/survey-dialogue.mjs";
+import { SURVEY_NARRATION, WAKING_DIALOGUE, DEPOSIT_ACKNOWLEDGMENT } from "../src/survey-dialogue.mjs";
 import { STORY_DIALOGUE } from "../src/ice-dialogue.mjs";
 import { FARMERS } from "../src/farmer-profiles.mjs";
 import { buildAlignedCaptionCues } from "../src/caption-timing.mjs";
@@ -22,7 +22,7 @@ export const STORY_VOICES = {
   "Gray colonist": "JBFqnCBsd6RMkjVDRZzb", // George, including the downed alien
   "Company guard": "cjVigY5qzO86Huf0OWal", // Eric
 };
-const storyReply = body => [...STORY_DIALOGUE, ...SURVEY_NARRATION].find(entry => entry.voiceSpeaker === body?.farmer && entry.text === body?.text);
+const storyReply = body => [...STORY_DIALOGUE, ...SURVEY_NARRATION, ...DEPOSIT_ACKNOWLEDGMENT, ...WAKING_DIALOGUE.filter(entry => entry.voiceSpeaker)].find(entry => entry.voiceSpeaker === body?.farmer && entry.text === body?.text);
 
 function apolloScript() {
   const messages = new Set(Object.values(APOLLO_DIALOGUE));
@@ -117,7 +117,7 @@ export function createAlienVoiceHandler({ client = new ElevenLabsClient(), now =
         const generated = (async () => {
           const options = {
             text: spokenText, modelId: model, outputFormat: "mp3_44100_128",
-            voiceSettings: { stability: scripted?.emotional ? 0.35 : body.farmer === "Apollo" ? 0.5 : 0.55, similarityBoost: 0.75 },
+            voiceSettings: { stability: (scripted?.emotional || scripted?.delivery === "eerie") ? 0.35 : body.farmer === "Apollo" ? 0.5 : 0.55, similarityBoost: 0.75 },
           };
           const requestOptions = { timeoutInSeconds: 45, maxRetries: 0 };
           let buffer;

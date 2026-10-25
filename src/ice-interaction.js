@@ -9,14 +9,17 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
   root.id = "ice-colony-interface";
   root.hidden = true;
   root.innerHTML = `
-    <div class="colony-location"><p class="colony-eyebrow">REGION 02</p><h2>Ares - Water Colony</h2><p id="ice-status" hidden></p></div>
-    <button id="ice-objectives-toggle" class="objectives-toggle" type="button">Q · Objectives</button>
-    <aside id="ice-mission-panel" class="mission-panel" aria-label="Colony 2 objectives">
-      <p class="colony-eyebrow">COLONY 2</p><p id="ice-objectives"></p>
-      <p id="ice-apollo" class="mission-water" role="status" aria-live="polite"></p>
+    <div class="colony-location"><p class="colony-eyebrow">COLONY 1</p><h2>Ares - Water Colony</h2><p id="ice-status" hidden></p></div>
+    <button id="ice-objectives-toggle" class="objectives-toggle" type="button" aria-controls="ice-mission-panel" aria-expanded="false">Q · Objectives</button>
+    <aside id="ice-mission-panel" class="mission-panel" aria-label="Water colony field survey" aria-hidden="true">
+      <p class="colony-eyebrow" id="ice-mission-title">FIELD SURVEY - WATER COLONY</p>
+      <ul id="ice-objectives" class="mission-objectives"></ul>
+      <p id="ice-inventory" class="mission-caption"></p>
+      <div class="apollo-message"><h3>APOLLO <span>Field assistant</span></h3>
+        <p id="ice-apollo" role="status" aria-live="polite"></p></div>
     </aside>
     <p id="ice-prompt" class="colony-talk-prompt" hidden></p>
-    <section id="ice-dialogue" class="dialogue-box colony-dialogue" hidden aria-label="Colony 2 conversation">
+    <section id="ice-dialogue" class="dialogue-box colony-dialogue" hidden aria-label="Water colony conversation">
       <p id="ice-speaker" class="colony-eyebrow"></p><p id="ice-line"></p>
       <p id="ice-dialogue-hint" class="colony-dialogue-hint">E — continue · Walk away to leave</p>
     </section>`;
@@ -33,12 +36,15 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
   } });
   let open = false, conversation = null, lines = [], line = 0, introducedPhase = null;
   let toolInstructionTime = 0, previousTool = null, previousSample = null;
+  let innerTime = 0, innerRevealed = false;
   const targets = encounter.base.group.children.filter(piece => /ice_block|crystal/.test(piece.name)).map(piece => ({
     type: piece.name.startsWith("crystal") ? "crystal" : "ice", bounds: new THREE.Box3().setFromObject(piece),
   }));
   function toggle(force) {
     open = typeof force === "boolean" ? force : !open;
     element("ice-mission-panel").className = `mission-panel${open ? " is-open" : ""}`;
+    element("ice-mission-panel").ariaHidden = String(!open);
+    element("ice-objectives-toggle").ariaExpanded = String(open);
     element("ice-objectives-toggle").textContent = open ? "Q · Close objectives" : "Q · Objectives";
   }
   element("ice-objectives-toggle").addEventListener("click", toggle);
@@ -52,10 +58,11 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
   function show() {
     const entry = lines[line];
     dubbing.stop();
+    innerTime = 0; innerRevealed = false;
     element("ice-dialogue").hidden = false;
     element("ice-speaker").textContent = entry.speaker;
-    element("ice-dialogue").classList?.toggle("apollo-dialogue", entry.speaker.startsWith("Apollo"));
-    element("ice-line").textContent = entry.voiceSpeaker && !entry.text.startsWith("[") ? "" : entry.text;
+    element("ice-dialogue").classList?.toggle("apollo-dialogue", entry.speaker.startsWith("Apollo") || entry.speaker.startsWith("You"));
+    element("ice-line").textContent = (entry.voiceSpeaker && !entry.text.startsWith("[")) || entry.innerThought ? "" : entry.text;
     if (entry.voiceSpeaker) void dubbing.start(entry, entry.voiceSpeaker);
     if (entry.tasks) encounter.assignTasks();
   }
@@ -78,6 +85,7 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
     return null;
   }
   return {
+    get musicMood() { return conversation ? lines[line]?.musicMood ?? (conversation.state === "downed" ? "sad" : undefined) : undefined; },
     get conversing() { return Boolean(conversation); },
     prepareStrike() {
       if (conversation && ["recognition", "hostile"].includes(encounter.phase)) close();
@@ -86,12 +94,19 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
     handleSkip() {
       if (!conversation || root.hidden) return false;
       if (dubbing.busy) dubbing.complete();
+      else if (lines[line]?.innerThought && !innerRevealed) { innerRevealed = true; element("ice-line").textContent = lines[line].text; }
       else { line++; if (line >= lines.length) close(); else show(); }
       return true;
     },
     leave: close,
     destroy() { close(); dubbing.destroy(); root.remove(); },
     update(player, keyboard, delta = 0) {
+      if (conversation && lines[line]?.innerThought && !innerRevealed && !root.hidden) {
+        innerTime += delta;
+        const words = lines[line].text.split(/\s+/), count = Math.min(words.length, Math.floor(innerTime * 7) + 1);
+        element("ice-line").textContent = words.slice(0, count).join(" ");
+        innerRevealed = count === words.length;
+      }
       if (keyboard?.consumeJustPressed("KeyQ")) toggle();
       if (conversation && Math.hypot(player.position.x - conversation.visual.position.x, player.position.z - conversation.visual.position.z) > 4.5) close();
       const alien = closestAlien(player.position), sample = resource(player.position);
@@ -103,6 +118,7 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
       if (keyboard?.consumeJustPressed("KeyE") && !blocked) {
         if (conversation) {
           if (dubbing.busy) return;
+          if (lines[line]?.innerThought && !innerRevealed) { innerRevealed = true; element("ice-line").textContent = lines[line].text; return; }
           line++;
           if (line >= lines.length) close(); else show();
         } else if (sample) {
@@ -128,10 +144,24 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
         : phase === "neutral" ? "Six gray colonists · Mining ice"
         : phase === "recognition" ? "The gray colonists recognize you"
         : `${encounter.asleep}/6 asleep${encounter.lastAlien ? " · Last alien downed and responsive" : ""}`;
-      element("ice-objectives").textContent = phase === "neutral" || phase === "recognition" ? "Talk to one of the gray aliens."
-        : phase === "hostile" ? "Incapacitate all six aliens."
-        : phase === "lastDowned" ? "Talk to the downed alien. Ask Apollo to translate."
-        : `${encounter.tasks.ice ? "✓" : "○"} Mine ice core · ${encounter.tasks.water ? "✓" : "○"} Water scan · ${encounter.tasks.crystal ? "✓" : "○"} Crystal sample`;
+      const contacted = !["neutral", "recognition"].includes(phase);
+      const subdued = ["lastDowned", "tasks", "complete"].includes(phase);
+      const translated = ["tasks", "complete"].includes(phase);
+      const objectives = [
+        { label: "Speak with the gray colonists", done: contacted },
+        ...(contacted ? [{ label: "Incapacitate the six colonists", done: subdued }] : []),
+        ...(subdued ? [{ label: "Talk to the downed alien and ask Apollo to translate", done: translated }] : []),
+        ...(translated ? [
+          { label: "Mine an ice core with the pickaxe", done: encounter.tasks.ice },
+          { label: "Scan the water source", done: encounter.tasks.water },
+          { label: "Collect a crystal sample", done: encounter.tasks.crystal },
+        ] : []),
+      ];
+      const markup = objectives.map(item => `<li class="${item.done ? "done" : ""}"><span aria-hidden="true">${item.done ? "\u2713" : "\u25cb"}</span>${item.label}</li>`).join("");
+      if (element("ice-objectives").innerHTML !== markup) element("ice-objectives").innerHTML = markup;
+      element("ice-mission-title").textContent = phase === "complete" ? "SURVEY COMPLETE" : "FIELD SURVEY - WATER COLONY";
+      const collected = ["ice", "water", "crystal"].filter(sample => encounter.tasks[sample]);
+      element("ice-inventory").textContent = `Sample case: ${collected.length}/3 - ${collected.length ? collected.join(" / ") : "empty"}`;
       element("ice-apollo").textContent = encounter.message;
       element("ice-prompt").hidden = blocked || Boolean(conversation) || (!sample && !alien) || (sample === "ice" && toolInstructionTime <= 0);
       element("ice-prompt").textContent = sample === "ice" ? (getTool() === "pickaxe" ? "Left-click — Mine ice · 3 strikes" : "2 — Equip pickaxe to mine ice")

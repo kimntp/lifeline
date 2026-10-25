@@ -92,7 +92,7 @@ test("home screen renders its real logo and start button, then switches to pause
     let starts = 0;
     const noop = () => {};
     const menu = createGameMenu({ session, clips: [], onPlay: () => { starts++; }, onPause: noop,
-      onNavigate: noop, onPreview: noop });
+      onNavigate: target => { if (target === "home") session.home(); }, onPreview: noop });
     assert.doesNotThrow(() => menu.render());
     assert.equal(elements.has("logo-placeholder"), false);
     for (const id of ["move-base-button", "move-colony-button", "ice-base-button", "set-spawn-button"]) {
@@ -129,6 +129,17 @@ test("home screen renders its real logo and start button, then switches to pause
     assert.equal(elements.get("home-stars").hidden, false);
     assert.equal(elements.get("home-background").hidden, false);
     assert.equal(elements.get("play-label").textContent, "Continue exploring");
+    session.finish(); menu.render();
+    assert.equal(session.paused, true);
+    assert.equal(elements.get("game-menu").classList.contains("ending-screen"), true);
+    for (const id of ["home-background", "home-logo", "ending-thanks", "ending-home"]) assert.equal(elements.get(id).hidden, false, id);
+    assert.equal(elements.get("menu-actions").hidden, true);
+    assert.equal(elements.get("home-transmission").hidden, true);
+    elements.get("ending-home").events.get("click")(); menu.render();
+    assert.equal(session.screen, "home");
+    assert.equal(elements.get("ending-thanks").hidden, true);
+    assert.equal(elements.get("ending-home").hidden, true);
+
   } finally {
     globalThis.document = originalDocument;
     globalThis.Option = originalOption;

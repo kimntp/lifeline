@@ -1,4 +1,4 @@
-import { SURVEY_NARRATION } from "../src/survey-dialogue.mjs";
+import { SURVEY_NARRATION, WAKING_DIALOGUE, DEPOSIT_ACKNOWLEDGMENT } from "../src/survey-dialogue.mjs";
 import { STORY_DIALOGUE, AFTERMATH_DIALOGUE } from "../src/ice-dialogue.mjs";
 import { STORY_VOICES } from "../server/alien-voice.mjs";
 import { FARMERS } from "../src/farmer-profiles.mjs";
@@ -206,4 +206,37 @@ test("Phase 1 cutscene narration uses an eerie expressive voice and permits only
     assert.equal((await call(handler, { farmer: "Narrator", text: entry.text })).status, 200);
   }
   assert.equal(isAllowedDialogueReply({ farmer: "Narrator", text: "Unscripted narration" }), false);
+});
+
+
+test("Apollo's waking objective uses his assigned voice, while inner thoughts stay silent", async () => {
+  const [thought, objective] = WAKING_DIALOGUE;
+  const handler = createAlienVoiceHandler({ client: fakeClient(async (voice, options) => {
+    assert.equal(voice, APOLLO_VOICE); assert.equal(options.text, objective.text); return stream();
+  }) });
+  assert.equal((await call(handler, { farmer: "Apollo", text: objective.text })).status, 200);
+  assert.equal(isAllowedDialogueReply({ farmer: "You", text: thought.text }), false);
+});
+
+
+test("suspicious Apollo dialogue keeps his voice but uses a darker whispered delivery", async () => {
+  const entry = STORY_DIALOGUE.find(entry => entry.delivery === "eerie");
+  assert.ok(entry);
+  const handler = createAlienVoiceHandler({ client: fakeClient(async (voice, options) => {
+    assert.equal(voice, APOLLO_VOICE); assert.equal(options.modelId, "eleven_v4");
+    assert.match(options.text, /\[whispering\] \[ominous\]/);
+    assert.ok(options.text.includes(entry.text)); assert.equal(options.voiceSettings.stability, .35);
+    return stream();
+  }) });
+  assert.equal((await call(handler, { farmer: "Apollo", text: entry.text })).status, 200);
+});
+
+
+test("sample submission acknowledgment uses Apollo's assigned voice", async () => {
+  const entry = DEPOSIT_ACKNOWLEDGMENT[0];
+  assert.match(entry.text, /Good job/); assert.match(entry.text, /benefit society/);
+  const handler = createAlienVoiceHandler({ client: fakeClient(async (voice, options) => {
+    assert.equal(voice, APOLLO_VOICE); assert.equal(options.text, entry.text); return stream();
+  }) });
+  assert.equal((await call(handler, { farmer: "Apollo", text: entry.text })).status, 200);
 });

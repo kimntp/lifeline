@@ -29,6 +29,7 @@ export class GameSession {
 
   back() { this.screen = this.returnScreen; }
   home() { this.screen = "home"; }
+  finish() { this.screen = "ending"; }
 }
 
 export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, onPreview }) {
@@ -91,6 +92,8 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
           <p class="menu-description">Preview a clip while the world stays paused.</p>
         </div>
         <button id="menu-back" class="menu-button" type="button" hidden>Back</button>
+        <p id="ending-thanks" class="menu-button primary" hidden>Thank you!</p>
+        <button id="ending-home" class="menu-button primary" type="button" hidden><span class="start-arrow" aria-hidden="true">&gt;</span><span>Return to main menu</span></button>
         <p id="menu-status" class="menu-status" role="status" aria-live="polite">Preparing terrain and crew…</p>
       </section>
     </main>
@@ -121,6 +124,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
     element("game-menu").inert = false;
     updateStartControl();
     if (session.screen === "home" && session.ready) element("play-button").focus();
+    if (session.screen === "ending") element("ending-home").focus();
   }
   const starfield = createHomeStarfield(element("home-stars"), {
     onActivityChange: animate => element("game-menu").classList.toggle("home-animated", animate),
@@ -160,6 +164,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
     ["home-button", "home"], ["menu-back", "back"]]) {
     element(id).addEventListener("click", () => onNavigate(target));
   }
+  element("ending-home").addEventListener("click", () => onNavigate("home"));
   select.addEventListener("change", () => onPreview(select.value));
   element("game-menu").addEventListener("keydown", event => {
     if (event.code === "Escape" && ["instructions", "animations"].includes(session.screen)) {
@@ -244,14 +249,17 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
       setNarrationPaused(session.paused);
       updateMuteButtons();
       const screen = session.screen;
-      const home = screen === "home", paused = screen === "paused";
+      const home = screen === "home", paused = screen === "paused", ending = screen === "ending";
       if (!home) launchRequested = false;
       const instructions = screen === "instructions", animations = screen === "animations";
       element("game-menu").hidden = !session.paused;
-      element("game-menu").classList.toggle("home-screen", home);
-      element("home-background").hidden = !home;
-      element("home-stars").hidden = !home;
-      starfield.setActive(home);
+      element("game-menu").classList.toggle("home-screen", home || ending);
+      element("game-menu").classList.toggle("ending-screen", ending);
+      element("ending-thanks").hidden = !ending;
+      element("ending-home").hidden = !ending;
+      element("home-background").hidden = !(home || ending);
+      element("home-stars").hidden = !(home || ending);
+      starfield.setActive(home || ending);
       element("home-ship").hidden = !home;
       spaceship.setActive(home);
       element("home-transmission").hidden = !home;
@@ -259,13 +267,13 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
       element("pause-button").hidden = session.paused;
       element("mute-button").hidden = session.paused;
       element("menu-mute-button").hidden = !paused;
-      element("home-logo").hidden = !(home || paused);
+      element("home-logo").hidden = !(home || paused || ending);
       element("menu-eyebrow").textContent = home ? "" : "LIFELINE";
-      element("menu-eyebrow").hidden = home || paused;
-      element("menu-title").textContent = home ? "Lifeline" : paused ? "Paused" : instructions ? "Instructions" : "Animations";
+      element("menu-eyebrow").hidden = home || paused || ending;
+      element("menu-title").textContent = home ? "Lifeline" : ending ? "Thank you!" : paused ? "Paused" : instructions ? "Instructions" : "Animations";
       element("menu-description").textContent = paused ? "Take a breath. Your world can wait." : "";
       element("menu-description").hidden = !paused;
-      element("menu-actions").hidden = instructions || animations;
+      element("menu-actions").hidden = instructions || animations || ending;
       updateStartControl();
       element("instructions-button").hidden = !paused;
       element("home-button").hidden = !paused;
@@ -274,7 +282,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
       element("menu-back").hidden = !instructions && !animations;
       if (!animations) select.value = "";
       if (focus && session.paused) {
-        const button = instructions || animations ? element("menu-back") : session.ready ? element("play-button") : element("menu-title");
+        const button = ending ? element("ending-home") : instructions || animations ? element("menu-back") : session.ready ? element("play-button") : element("menu-title");
         button.focus();
       }
     },

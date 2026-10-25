@@ -82,3 +82,40 @@ test("home screen plays normal music while gameplay is paused, continues into pl
   assert.ok(f.clips.every(clip => clip.paused));
   f.music.destroy();
 });
+
+
+test("opening and ending screens use Credits Mix and crossfade back to normal gameplay", async () => {
+  const f = fixture(), [normal, unsettling, credits] = f.clips;
+  f.notify({ paused: true, muted: false });
+  advance(f.music, { active: false, homeScreen: true, credits: true }); await settle();
+  assert.equal(credits.src, "/assets/Credits%20Mix.mp3");
+  assert.equal(credits.paused, false); assert.equal(credits.volume, OST_VOLUME);
+  assert.ok(normal.paused && unsettling.paused);
+  f.notify({ paused: false, muted: false });
+  advance(f.music, {}); await settle();
+  assert.equal(normal.paused, false); assert.equal(credits.paused, true);
+  f.notify({ paused: true, muted: true });
+  advance(f.music, { active: false, homeScreen: true, credits: true }); await settle();
+  assert.equal(credits.paused, false); assert.equal(credits.muted, true);
+  f.music.destroy();
+});
+
+
+test("sad scenes override unsettling music; inner thoughts shift from unsettling to normal when Apollo speaks", async () => {
+  const f = fixture(), [normal, unsettling, credits, sad] = f.clips;
+  assert.equal(sad.src, "/assets/Sad%20Mix.mp3"); assert.equal(sad.loop, true);
+  advance(f.music, { mood: "sad", unsettling: true }); await settle();
+  assert.equal(sad.paused, false); assert.equal(sad.volume, OST_VOLUME);
+  assert.ok(normal.paused && unsettling.paused && credits.paused);
+  advance(f.music, { mood: "unsettling" }); await settle();
+  assert.equal(unsettling.paused, false); assert.equal(sad.paused, true);
+  f.music.update(.25, { active: true, mood: "normal", unsettling: true, dialogue: true }); await settle();
+  assert.ok(normal.volume > 0 && unsettling.volume > 0, "Music crossfades as Apollo begins");
+  advance(f.music, { mood: "normal", unsettling: true, dialogue: true }); await settle();
+  assert.equal(normal.paused, false); assert.equal(unsettling.paused, true);
+  assert.equal(normal.volume, OST_VOLUME * .55);
+  f.notify({ paused: true, muted: true });
+  advance(f.music, { active: false, homeScreen: true, credits: true, mood: "sad" }); await settle();
+  assert.equal(credits.paused, false); assert.equal(credits.muted, true); assert.equal(sad.paused, true);
+  f.music.destroy();
+});

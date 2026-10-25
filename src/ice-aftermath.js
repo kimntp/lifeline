@@ -104,6 +104,7 @@ export function createIceAftermath({ alien, player, scene, camera, ground, obsta
   actors.update("pain", 0, 0); frameCamera("pain"); root.hidden = true;
   return {
     finished, actors,
+    get musicMood() { return ["pain", "dialogue"].includes(phase()) ? "sad" : "unsettling"; },
     setVisible(visible) { root.hidden = !visible; dubbing.setPaused(!visible); },
     get phase() { return phase(); },
     get dialogueIndex() { return dialogueLine; },

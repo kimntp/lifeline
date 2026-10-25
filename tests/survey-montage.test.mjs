@@ -35,6 +35,7 @@ test("Colony 1 guards retain correct proportions and visibly strike an alien in 
     montage = createSurveyMontage({ dubbingFactory: () => ({ ...silentDubbingFactory(), start(entry, voice) { spoken.push({ entry, voice }); } }), player, alienModels: models, cropModel: asset("Wheat Crop"), tomatoModel: asset("Tomato Plant"), domeModel: asset("hab_dome"), aspect: 16 / 9 });
     assert.ok(montage.camera.position.length() > 1, "The camera is staged before the reveal fade");
     assert.equal(montage.shot.action, "forcedFarming");
+    assert.equal(montage.musicMood, "sad");
     assert.equal(SURVEY_SHOTS[0].duration, 7);
     assert.equal(SURVEY_SHOTS.length, 3, "The additional close-up stays in Colony 1");
     assert.ok(SURVEY_SHOTS.every(shot => shot.region.includes("GALE CRATER")));
@@ -59,7 +60,10 @@ test("Colony 1 guards retain correct proportions and visibly strike an alien in 
     let sourceDisposed = false; sourceGeometry.addEventListener("dispose", () => { sourceDisposed = true; });
     montage.update(20, false);
     assert.equal(montage.shot.action, "forcedFarming", "Pause freezes the cutscene timeline");
-    montage.update(6.99, true);
+    montage.update(3, true);
+    const peakBlur = Number(elements.get(".montage-dream-blur").style.opacity);
+    montage.update(3.99, true);
+    assert.ok(peakBlur > Number(elements.get(".montage-dream-blur").style.opacity), "Dream blur fades in and out over each shot");
     assert.equal(montage.shot.action, "forcedFarming", "Guards police the farm for the full seven seconds");
     montage.update(0.02, true); assert.equal(montage.shot.action, "batonStrike");
     const farmer = colonists[0];

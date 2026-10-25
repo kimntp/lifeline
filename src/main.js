@@ -1,3 +1,5 @@
+import { createBaseRest } from "./base-rest.js";
+import { createWakingDialogue } from "./waking-dialogue.js";
 import { createPlayerSounds } from "./player-sounds.js";
 import { createBackgroundMusic, shouldUseUnsettlingMusic } from "./background-music.js";
 import { createMinimap } from "./minimap.js";
@@ -13,7 +15,7 @@ import { ASTRONAUT_CLIPS, AstronautAnimator } from "./astronaut-animations.js";
 import { TerrainGround, advanceGroundedActor, measureFootOffset } from "./terrain-ground.js";
 import { createTerrainSurround } from "./terrain-surround.js";
 import { GameSession, createGameMenu } from "./game-menu.js";
-import { placeSpaceBase, foundationHeightAt, getPlayerSpawn } from "./space-base.js";
+import { placeSpaceBase, foundationHeightAt, getPlayerSpawn, getBaseSpawn } from "./space-base.js";
 import { resolveBaseCollision, resolvePlatformCollision } from "./base-collision.js";
 import { buildGardenColony } from "./garden-colony.js";
 import { createColonyInteraction } from "./colony-interaction.js";
@@ -37,6 +39,7 @@ const playerSounds = createPlayerSounds();
 const gardenMission = new GardenMission();
 let iceModelsPromise = null;
 let apolloNarrator = null;
+let renderCompanion = null;
 let placingIceBase = false;
 
 const shared = {
@@ -187,17 +190,19 @@ function startPreview() {
     }
 
     playerSounds.update({
-      active: !session.paused && !flags.missionTransition && !shared.iceAftermath && !shared.surveyMontage && _loopShared.cameraMode === "third-person",
+      active: !session.paused && !flags.missionTransition && !shared.iceAftermath && (!shared.surveyMontage || shared.surveyMontage.allowPlayerSounds) && _loopShared.cameraMode === "third-person",
       position: shared.player?.position, grounded: shared.playerState.grounded,
       sprinting: shared.keyboard?.sprint, swinging: shared.stateMachine?.oneShot, delta,
     });
     backgroundMusic.update(delta, {
       active: session.started && !session.paused,
-      homeScreen: session.screen === "home" && !document.hidden,
+      homeScreen: ["home", "ending"].includes(session.screen) && !document.hidden,
+      credits: ["home", "ending"].includes(session.screen),
       unsettling: shouldUseUnsettlingMusic({
-        cutscene: Boolean(flags.missionTransition || shared.iceAftermath || shared.surveyMontage),
+        cutscene: Boolean(flags.missionTransition || shared.iceAftermath || (shared.surveyMontage && shared.surveyMontage.isDream !== false)),
         alienPhase: shared.iceEncounter?.phase,
       }),
+      mood: shared.surveyMontage?.musicMood ?? shared.iceAftermath?.musicMood ?? shared.iceInteraction?.musicMood,
       dialogue: dialogueSession.busy,
     });
     shared.iceAftermath?.update(delta, !session.paused && !gameMenu.transitioning);
@@ -209,6 +214,7 @@ function startPreview() {
       selected: shared.selectedTool, combatUnlocked: gardenMission.completed });
     apolloNarrator?.setPaused(session.paused || flags.missionTransition || Boolean(shared.surveyMontage) || Boolean(shared.iceAftermath));
     apolloNarrator?.update();
+    if (!session.paused) renderCompanion?.(delta);
     minimap?.update({
       player: shared.player?.position, yaw: shared.player?.rotation.y,
       base: shared.spaceBase?.userData.foundationBounds?.getCenter(new THREE.Vector3()) ?? LEVEL_LAYOUT.base,
@@ -496,6 +502,7 @@ function step3_cityMovement() {
   let locked = false;
 
   document.addEventListener("pointerlockchange", () => {
+  if (session.screen === "ending") { clearGameInput(); gameMenu.render(); return; }
     locked = document.pointerLockElement === renderer.domElement;
     renderer.domElement.style.cursor = locked ? "none" : "default";
   });
@@ -926,7 +933,7 @@ async function main() {
   minimap = createMinimap();
   apolloNarrator = createApolloNarrator();
   startPreview();
-  createOrangeBotOverlay().then((render) => addPreviewFn(render, 100))
+  createOrangeBotOverlay().then(render => { renderCompanion = render; })
     .catch((error) => console.error("OrangeBOT could not load:", error));
   // step 2
   await step2_city();
@@ -1097,6 +1104,11 @@ async function playIceAftermath() {
       shared.iceAftermath?.dispose(); shared.iceAftermath = null;
       shared.player.visible = playerVisible;
       shared.camera.position.copy(cameraPosition); shared.camera.quaternion.copy(cameraRotation);
+      session.finish();
+      apolloNarrator?.setPaused(true);
+      gameMenu.status("");
+      gameMenu.render();
+      if (document.pointerLockElement) document.exitPointerLock();
     });
   } catch (error) { console.error("[ice] Alien scene failed:", error); }
   finally {
@@ -1114,6 +1126,21 @@ async function depositSurveySamples() {
   clearGameInput();
   try {
     await gameMenu.transitionToGame(() => {
+      gardenMission.finishDeposit();
+      shared.colonyInteraction.leave();
+      apolloNarrator?.setPaused(true);
+      shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission, shared.colony?.bounds);
+      const target = getBaseSpawn(shared.spaceBase, shared.terrainGround);
+      shared.surveyMontage = createBaseRest({ player: shared.player, camera: shared.camera, target,
+        obstacles: [shared.spaceBase.userData.buildingBounds, shared.sampleStation.bounds],
+        heightAt: worldGroundHeight, footOffset: shared.playerFootOffset, animator: shared.stateMachine,
+        reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches });
+    });
+    flags.missionTransition = false;
+    await shared.surveyMontage.finished;
+    flags.missionTransition = true;
+    await gameMenu.transitionToGame(() => {
+      shared.surveyMontage.dispose(); shared.surveyMontage = null;
       const spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, LEVEL_LAYOUT.spawn);
       shared.player.position.copy(spawn.position);
       shared.player.position.y += shared.playerFootOffset;
@@ -1132,7 +1159,6 @@ async function depositSurveySamples() {
       shared.camera.position.set(shared.player.position.x, shared.player.position.y + 2.2,
         shared.player.position.z + shared.cameraDistance);
       shared.camera.lookAt(shared.player.position.x, shared.player.position.y + 1.2, shared.player.position.z);
-      gardenMission.finishDeposit();
       shared.selectedTool = "baton";
       if (shared.shovel) shared.shovel.visible = false;
       if (shared.baton) shared.baton.visible = true;
@@ -1153,7 +1179,11 @@ async function depositSurveySamples() {
       await gameMenu.transitionToGame(() => {
         shared.surveyMontage.dispose(); shared.surveyMontage = null;
         document.body.classList.remove("survey-cinematic");
+        shared.surveyMontage = createWakingDialogue();
       });
+      flags.missionTransition = false;
+      await shared.surveyMontage.finished;
+      shared.surveyMontage.dispose(); shared.surveyMontage = null;
     }
   } catch (error) {
     console.error("[survey] Sample deposit transition failed:", error);
@@ -1178,6 +1208,7 @@ const gameMenu = createGameMenu({
 gameMenu.render({ focus: false });
 
 document.addEventListener("pointerlockchange", () => {
+  if (session.screen === "ending") { clearGameInput(); gameMenu.render(); return; }
   if (shared.renderer && document.pointerLockElement === shared.renderer.domElement) {
     if (shared.stateMachine?.preview) shared.stateMachine.setPreview("");
     clearGameInput();

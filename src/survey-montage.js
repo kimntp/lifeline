@@ -73,11 +73,12 @@ export function createSurveyMontage({ player, alienModels, cropModel, tomatoMode
   });
   const root = document.createElement("section"); root.className = "survey-montage";
   root.setAttribute("aria-label", "Garden colony forced labor cutscene");
-  root.innerHTML = `<div class="montage-letterbox montage-top"></div><p class="montage-region"></p>
+  root.innerHTML = `<div class="montage-dream-blur" aria-hidden="true"></div><div class="montage-vignette" aria-hidden="true"></div><div class="montage-letterbox montage-top"></div><p class="montage-region"></p>
     <div class="dialogue-box montage-bottom"><p class="colony-eyebrow">Narrator</p><p class="montage-caption" aria-live="polite"></p>
     <button class="colony-dialogue-hint" type="button">Enter — Skip cutscene</button></div><div class="montage-dissolve" aria-hidden="true"></div>`;
   document.body.appendChild(root);
   const region = root.querySelector(".montage-region"), caption = root.querySelector(".montage-caption"), dissolve = root.querySelector(".montage-dissolve");
+  const blur = root.querySelector(".montage-dream-blur");
   const owner = {};
   if (!channel.begin(owner)) { root.remove(); throw new Error("The montage needs the dialogue channel"); }
   const speaker = root.querySelector(".colony-eyebrow"), box = root.querySelector(".montage-bottom");
@@ -119,7 +120,7 @@ export function createSurveyMontage({ player, alienModels, cropModel, tomatoMode
   }
   title();
   const montage = {
-    scene, camera, finished,
+    scene, camera, finished, musicMood: "sad",
     setVisible(visible) { root.hidden = !visible; dubbing.setPaused(!visible); },
     get shot() { return SURVEY_SHOTS[shotIndex]; },
     update(delta, visible, nextAspect = aspect) {
@@ -138,7 +139,9 @@ export function createSurveyMontage({ player, alienModels, cropModel, tomatoMode
       if (camera.aspect !== nextAspect) { camera.aspect = nextAspect; camera.updateProjectionMatrix(); }
       const collapse = SURVEY_SHOTS[shotIndex].action === "collapse";
       const strike = SURVEY_SHOTS[shotIndex].action === "batonStrike";
-      const t = shotTime / SURVEY_SHOTS[shotIndex].duration;
+      const t = Math.min(1, shotTime / SURVEY_SHOTS[shotIndex].duration);
+      const dreamStrength = reducedMotion ? 0.45 : Math.sin(t * Math.PI);
+      blur.style.opacity = String(0.15 + dreamStrength * 0.85);
       for (const [i, guard] of guards.entries()) {
         if (strike && i === 0) {
           guard.animator.current.time = THREE.MathUtils.clamp((shotTime - 0.8) * 0.8, 0, guard.animator.current.getClip().duration);

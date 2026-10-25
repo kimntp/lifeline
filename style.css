@@ -109,7 +109,7 @@ body {
 .apollo-message { border-top: 1px solid rgba(176, 223, 233, 0.2); margin-top: 14px; }
 .apollo-message h3 { color: #b0dfe9; letter-spacing: 0.12em; }
 .apollo-message h3 span { color: #b6a8c5; font-size: 0.65rem; letter-spacing: 0; margin-left: 6px; }
-#mission-apollo { font-size: 0.78rem; line-height: 1.6; color: #e3d5ee; }
+#mission-apollo, #ice-apollo { font-size: 0.78rem; line-height: 1.6; color: #e3d5ee; }
 @media (max-width: 600px), (max-height: 650px) {
   .mission-panel { top: 130px; right: 12px; width: min(270px, calc(100vw - 24px)); max-height: calc(100vh - 330px); padding: 12px; }
 }
@@ -801,3 +801,30 @@ body.apollo-glitch .ice-aftermath { border-color: #bf83b5; }
 @media (prefers-reduced-motion: reduce) { body.apollo-glitch #orangebot-overlay { animation: none; } }
 
 .dialogue-box > .colony-eyebrow { display: block; margin: 0 0 4px; font-size: .75em; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+
+.montage-dream-blur, .montage-vignette { position: absolute; inset: 0; pointer-events: none; }
+.montage-dream-blur { backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); background: rgba(30, 20, 43, .13); }
+.montage-vignette { background: radial-gradient(ellipse at center, transparent 20%, rgba(0, 0, 0, .55) 65%, #000 100%); box-shadow: inset 0 0 12vw 5vw #000; }
+.waking-line { margin: 0; min-height: 2.9em; }
+.waking-dialogue { pointer-events: auto; }
+.waking-dialogue button { display: block; background: transparent; border: 0; padding: 0; text-align: left; cursor: pointer; }
+
+.menu-shell.ending-screen { align-items: center; justify-content: center; }
+.ending-screen .menu-card { width: min(560px, 85vw); margin: auto; align-items: center; text-align: center; gap: 20px; }
+.ending-screen .home-logo { width: min(100%, 480px); }
+.ending-screen .home-response, .ending-screen #menu-status { display: none; }
+#ending-thanks { margin: 0; cursor: default; }
+#ending-home { width: auto; }
+
+/* Keep all dialogue surfaces on the same typography and spacing. */
+.dialogue-box > :is(.colony-eyebrow, #narration-speaker) { margin: 0 0 4px; color: #b8b8b8; font-size: .75em; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.dialogue-box.colony-dialogue:not(.apollo-dialogue) > .colony-eyebrow { color: #d5b9f5; }
+.dialogue-box > p:not(.colony-eyebrow):not(.colony-dialogue-hint):not(.aftermath-link) { margin: 0; min-height: 2.9em; }
+.dialogue-box > .colony-dialogue-hint { margin: 6px 0 0; font-family: inherit; font-size: .75rem; line-height: inherit; color: #b9a7cc; }
+
+.base-rest { pointer-events: none; }
+.rest-haze, .rest-eyelids, .rest-blackout { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+.rest-haze { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); opacity: 0; background: rgba(24, 19, 37, .2); }
+.rest-eyelids { border-block: 25vh solid rgba(0, 0, 0, .9); clip-path: inset(25% 0); }
+.rest-blackout { background: #000; opacity: 0; z-index: 9; }
+.base-rest .dialogue-box { z-index: 6; }

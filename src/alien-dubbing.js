@@ -45,7 +45,7 @@ export function createDialogueDubbing({ owner, site = { x: 0, z: 0 }, onChange =
       else if (!paused && status === "paused") void beginPlayback(generation);
     },
     async start(entry, farmer) {
-      if (entry.requiresSpeech || entry.speaker === "You" || farmer === "You") { this.stop(); return; }
+      if (entry.requiresSpeech || entry.innerThought || entry.speaker?.startsWith("You") || farmer === "You") { this.stop(); return; }
       generation++; cleanup();
       const attempt = generation;
       currentEntry = entry; currentSpeaker = farmer;
