@@ -54,7 +54,7 @@ export function createDialogueDubbing({ owner, site = { x: 0, z: 0 }, onChange =
       try {
         const response = await request(`${import.meta.env?.BASE_URL ?? "/"}api/dialogue-voice`, {
           method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.any([abort.signal, AbortSignal.timeout(60000)]),
-          body: JSON.stringify({ text: entry.text, farmer, site, includeTimestamps: true }),
+          body: JSON.stringify({ text: entry.text, farmer, site, includeTimestamps: !entry.nonVerbal }),
         });
         if (!response.ok) throw new Error("Voice unavailable");
         let blob;

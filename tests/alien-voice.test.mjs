@@ -240,3 +240,18 @@ test("sample submission acknowledgment uses Apollo's assigned voice", async () =
   }) });
   assert.equal((await call(handler, { farmer: "Apollo", text: entry.text })).status, 200);
 });
+
+
+test("alien pain before the filter fails is nonverbal audio without translated words or required alignment", async () => {
+  const entry = AFTERMATH_DIALOGUE.pain;
+  assert.equal(entry.nonVerbal, true);
+  assert.doesNotMatch(entry.speaker, /Unfiltered/);
+  const handler = createAlienVoiceHandler({ client: fakeClient(async (voice, options) => {
+    assert.equal(voice, STORY_VOICES["Gray colonist"]);
+    assert.equal(options.text, "[crying] [groaning] [whimpering]");
+    assert.doesNotMatch(options.text, /it hurts|protect our water/);
+    return stream();
+  }) });
+  const result = await call(handler, { farmer: entry.voiceSpeaker, text: entry.text, includeTimestamps: true });
+  assert.equal(result.status, 200); assert.equal(result.headers["Content-Type"], "audio/mpeg");
+});

@@ -1,5 +1,5 @@
 // Shared script keeps server voice validation and in-game dialogue in sync.
-export const ALIEN_PAIN_LINE = "Please... it hurts. We only wanted to protect our water.";
+export const ALIEN_PAIN_LINE = "[The alien whimpers in pain.]";
 const voiced = entries => Object.freeze(entries.map(entry => ({ ...entry,
   voiceSpeaker: entry.innerThought || entry.speaker === "You" ? undefined : entry.speaker.startsWith("Apollo") ? "Apollo" : /gray/i.test(entry.speaker) ? "Gray colonist" : entry.speaker,
   speechText: entry.delivery === "eerie" ? `[whispering] [ominous] ${entry.text}` : entry.emotional ? `[sad] [trembling] ${entry.text}` : entry.text.startsWith("[The alien") ? "Kara... sah vel... tesh... va nu." : entry.text.replace(/[\[\]]/g, ""),
@@ -21,12 +21,12 @@ export const DIRECT_ALIEN_DIALOGUE = voiced([
   { speaker: "Downed gray alien", emotional: true, text: "They take our crops and our water to Earth. Our families are forced to work." },
   { speaker: "You", text: "Apollo told me the samples would help everyone." },
   { speaker: "Downed gray alien", emotional: true, text: "Your samples show them what to take next. If we refuse, their guards beat us. When we collapse, they replace us." },
-  { speaker: "Downed gray alien", emotional: true, text: "You heard me before he changed my words. Now you know. Will you help us?" },
+  { speaker: "Downed gray alien", emotional: true, text: "Now that his filter is disabled, you can hear what I'm really saying. Will you help us?" },
   { speaker: "You", text: "I'll listen to you. Tell me what you need." },
   { speaker: "Downed gray alien", emotional: true, text: "Be our Lifeline." },
 ]);
 export const AFTERMATH_DIALOGUE = {
-  pain: { speaker: "Downed gray alien - Unfiltered voice", voiceSpeaker: "Gray colonist", emotional: true, text: ALIEN_PAIN_LINE, speechText: `[crying] [strained] ${ALIEN_PAIN_LINE}` },
+  pain: { speaker: "Downed gray alien", voiceSpeaker: "Gray colonist", emotional: true, nonVerbal: true, text: ALIEN_PAIN_LINE, speechText: "[crying] [groaning] [whimpering]" },
   march: { speaker: "You", text: "Four company guards... They're coming this way." },
   strike: { speaker: "Company guard", voiceSpeaker: "Company guard", text: "Step away from the worker." },
   down: { speaker: "You", text: "[The baton hits. You fall beside the injured alien.]" },

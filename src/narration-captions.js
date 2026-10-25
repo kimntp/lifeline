@@ -109,6 +109,12 @@ export function attachNarrationCaptions(audio, url, target = null) {
 
 // Embed the same audio-timed renderer in conversations and cinematic dialogue.
 export function attachDialogueText(audio, entry, { box, speaker, line }) {
+  if (entry.nonVerbal) {
+    renderDialogueText(line, entry.text);
+    const detach = () => {};
+    detach.complete = () => renderDialogueText(line, entry.text);
+    return detach;
+  }
   return attachNarrationCaptions(audio, { speaker: entry.speaker, text: entry.text,
     ...(entry.cues?.length && !entry.text.startsWith("[") ? { cues: entry.cues } : {}) }, { box, speaker, line });
 }

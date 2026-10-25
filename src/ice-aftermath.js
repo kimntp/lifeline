@@ -56,7 +56,7 @@ export function createIceAftermath({ alien, player, scene, camera, ground, obsta
     button.textContent = p === "dialogue" ? "Enter / E - Continue | Enter - Skip voice" : "Sequence playing... | Enter - Skip voice";
     stopSpeech();
     const entry = p === "dialogue" ? DIRECT_ALIEN_DIALOGUE[dialogueLine] : AFTERMATH_DIALOGUE[p];
-    speaker.textContent = entry.speaker; renderDialogueText(line, entry.voiceSpeaker ? "" : entry.text);
+    speaker.textContent = entry.speaker; renderDialogueText(line, entry.voiceSpeaker && !entry.nonVerbal ? "" : entry.text);
     root.classList?.toggle("apollo-dialogue", entry.speaker.startsWith("Apollo"));
     pendingSpeech = entry.voiceSpeaker ? entry : null;
     link.textContent = ["glitch", "dialogue"].includes(p) ? p === "glitch"

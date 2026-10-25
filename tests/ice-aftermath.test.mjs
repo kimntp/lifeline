@@ -42,7 +42,9 @@ test("four guards march in, knock the astronaut down, and Apollo glitches into a
     let finished = false; cutscene.finished.then(() => { finished = true; });
     const pressE = () => listeners.get("keydown")({ code: "KeyE" });
     cutscene.update(0.1, true); cutscene.update(0.1, true);
-    assert.equal(spoken.length, 1); assert.ok(spoken[0].includes(ALIEN_PAIN_LINE));
+    assert.equal(spoken.length, 1); assert.match(spoken[0], /\[whimpering\]/);
+    assert.doesNotMatch(spoken[0], /it hurts|protect our water/);
+    assert.equal(elements.get("#aftermath-line").textContent, ALIEN_PAIN_LINE);
     pressE(); await Promise.resolve(); assert.equal(finished, false, "E cannot skip the guard sequence");
     cutscene.update(2, false); assert.equal(paused, 1); assert.equal(cutscene.phase, "pain");
     cutscene.update(3, true); assert.equal(cutscene.phase, "march"); assert.equal(cutscene.musicMood, "unsettling");

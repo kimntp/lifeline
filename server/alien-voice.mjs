@@ -105,7 +105,7 @@ export function createAlienVoiceHandler({ client = new ElevenLabsClient(), now =
     const spokenText = scripted?.speechText ?? body.text;
     const voice = scripted ? STORY_VOICES[scripted.voiceSpeaker] : body.farmer === "Apollo" ? APOLLO_VOICE : FARMER_VOICES[body.farmer];
     const model = (body.farmer === "Apollo" || scripted?.emotional) ? "eleven_v4" : "eleven_flash_v2_5";
-    const timed = body.includeTimestamps === true;
+    const timed = body.includeTimestamps === true && !scripted?.nonVerbal;
     const key = `${model}:${voice}:${timed}:${spokenText}`;
     try {
       if (!cache.has(key) && !pending.has(key)) {
