@@ -142,7 +142,7 @@ test("E completes the entire peaceful survey, then deposits only at the base sta
     assert.equal(elements.get("#mission-conditions").hidden, false);
     assert.match(elements.get("#mission-objectives").innerHTML, /Collect a soil sample/);
     assert.equal(elements.get("#mission-panel").className, "mission-panel", "New tasks do not force open a closed tab");
-    assert.equal(elements.get("#apollo-radio").hidden, false);
+    assert.equal(elements.has("#apollo-radio"), false);
     player.position.copy(colony.plots[0].center).add(new THREE.Vector3(0, 0.4, 0));
     step(); step(); step();
     assert.deepEqual(samples, ["soil", "tomato"]);

@@ -77,7 +77,7 @@ test("alien interaction cannot interrupt narration, and retains ownership while 
       visual: { visible: true, position: new THREE.Vector3(), rotation: { y: 0 } },
       profile: { name: "Iri", role: "Soilkeeper", lines: ["Welcome.", "Our garden."] },
     };
-    const interaction = createColonyInteraction({ site: { x: 0, z: 0 }, workers: [worker] }, channel);
+    const interaction = createColonyInteraction({ site: { x: 0, z: 0 }, workers: [worker], plots: [] }, { channel });
     const player = { position: new THREE.Vector3(0, 0, 1) };
     const press = { consumeJustPressed: () => true };
     interaction.update(player, press);
@@ -86,10 +86,12 @@ test("alien interaction cannot interrupt narration, and retains ownership while 
     channel.end(narrator);
     interaction.update(player, press);
     assert.equal(worker.talking, true);
-    assert.equal(node("#colony-dialogue-text").textContent, "Welcome.");
+    assert.match(node("#colony-dialogue-text").textContent, /How are you able to grow/);
     assert.equal(channel.begin(narrator), false);
     interaction.update(player, press);
-    assert.equal(node("#colony-dialogue-text").textContent, "Our garden.");
+    assert.match(node("#colony-dialogue-text").textContent, /regenerate the soil/);
+    interaction.update(player, press);
+    interaction.update(player, press);
     interaction.update(player, press);
     assert.equal(worker.talking, false);
     assert.equal(channel.busy, false);

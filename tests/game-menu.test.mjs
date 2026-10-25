@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { GameSession } from "../src/game-menu.js";
+import { GameSession, createGameMenu } from "../src/game-menu.js";
 
 test("home stays paused and cannot start until the world finishes loading", () => {
   const session = new GameSession();
@@ -59,4 +59,66 @@ test("losing mouse capture preserves an open submenu", () => {
   assert.equal(session.screen, "instructions");
   session.back();
   assert.equal(session.screen, "paused");
+});
+
+test("home screen renders its real logo and start button, then switches to pause and back", () => {
+  const originalDocument = globalThis.document;
+  const originalOption = globalThis.Option;
+  const elements = new Map();
+  const root = {
+    set innerHTML(html) {
+      for (const match of html.matchAll(/<[^>]*\bid="([^"]+)"[^>]*>/g)) {
+        const classes = new Set();
+        const events = new Map();
+        elements.set(match[1], {
+          hidden: /\bhidden(?:\s|>|=)/.test(match[0]),
+          disabled: /\bdisabled(?:\s|>|=)/.test(match[0]),
+          textContent: "", style: {}, attributes: new Map(),
+          classList: { toggle(name, value) { if (value) classes.add(name); else classes.delete(name); }, contains: name => classes.has(name) },
+          addEventListener(name, callback) { events.set(name, callback); },
+          setAttribute(name, value) { this.attributes.set(name, value); },
+          focus() { globalThis.document.activeElement = this; },
+          play() { this.playing = true; return Promise.resolve(); },
+          pause() { this.playing = false; },
+          add() {}, events,
+        });
+      }
+    },
+    querySelector(selector) { return elements.get(selector.slice(1)) ?? null; },
+  };
+  globalThis.document = { createElement: () => root, body: { appendChild() {} }, activeElement: null };
+  globalThis.Option = class {};
+  try {
+    const session = new GameSession();
+    let starts = 0;
+    const noop = () => {};
+    const menu = createGameMenu({ session, clips: [], onPlay: () => { starts++; }, onPause: noop,
+      onNavigate: noop, onPreview: noop, onMoveBase: noop, onMoveColony: noop, onSetSpawn: noop, onIceBase: noop });
+    assert.doesNotThrow(() => menu.render());
+    assert.equal(elements.has("logo-placeholder"), false);
+    assert.equal(elements.get("home-logo").hidden, false);
+    assert.equal(elements.get("instructions-button").hidden, true);
+    assert.equal(elements.get("play-button").disabled, true);
+    assert.equal(elements.get("home-video").playing, true);
+    session.ready = true;
+    menu.render();
+    assert.equal(elements.get("play-button").disabled, false);
+    assert.equal(elements.get("play-button").textContent, "Start exploring");
+    elements.get("play-button").events.get("click")();
+    assert.equal(starts, 1);
+    session.play(); menu.render();
+    assert.equal(elements.get("game-menu").hidden, true);
+    assert.equal(elements.get("home-video").playing, false);
+    session.pause(); menu.render();
+    assert.equal(elements.get("home-logo").hidden, true);
+    assert.equal(elements.get("instructions-button").hidden, false);
+    assert.equal(elements.get("play-button").textContent, "Resume");
+    session.home(); menu.render();
+    assert.equal(elements.get("home-logo").hidden, false);
+    assert.equal(elements.get("home-video").playing, true);
+    assert.equal(elements.get("play-button").textContent, "Continue exploring");
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.Option = originalOption;
+  }
 });

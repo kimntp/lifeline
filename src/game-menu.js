@@ -192,7 +192,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
       element("pause-button").hidden = session.paused;
       element("mute-button").hidden = session.paused;
       element("menu-mute-button").hidden = !paused;
-      element("logo-placeholder").hidden = !home;
+      element("home-logo").hidden = !home;
       element("menu-eyebrow").textContent = home ? "" : "LIFELINE";
       element("menu-eyebrow").hidden = home;
       element("menu-title").textContent = home ? "Lifeline" : paused ? "Paused" : instructions ? "Instructions" : "Animations";

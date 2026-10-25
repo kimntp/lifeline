@@ -4,25 +4,13 @@ import { createAlienFarmer } from "./alien-farmers.js";
 export const GARDEN_COLONY = {
   name: "Gale Crater — Garden Colony",
   ability: "Regenerate soil and accelerate plant growth",
-  objective: "Enslave farmers and export crops to Earth",
+  disposition: "peaceful",
 };
 
-const CONVERSATIONS = [
-  { name: "Iri", role: "Soilkeeper", lines: [
-    "Welcome to Gale Crater, our Garden Colony. These beds were barren dust before we arrived.",
-    "We regenerate the soil and guide the roots. Tomatoes and wheat grow in days when we tend them together.",
-    "You are welcome to study the garden. Please take only small samples so the plants can keep growing.",
-  ] },
-  { name: "Vela", role: "Grower", lines: [
-    "Watch the young shoots. Our touch helps them grow, but even living soil needs rest.",
-    "The hab dome is our shelter. We go inside to rest and collect supplies, then return to the crops.",
-    "We exchange crops for water with another colony. Our neighbors help keep this garden alive.",
-  ] },
-  { name: "Naru", role: "Seedkeeper", lines: [
-    "I save seeds from the wheat and tomatoes. A colony needs more than a single harvest to survive.",
-    "Our abilities create the growing conditions these seeds need. Sharing what we know helps both our peoples.",
-    "Please remember that this garden belongs to the people who make it live.",
-  ] },
+const FARMERS = [
+  { name: "Iri", role: "Soilkeeper" },
+  { name: "Vela", role: "Grower" },
+  { name: "Naru", role: "Seedkeeper" },
 ];
 
 function normalizedModel(source, height) {
@@ -82,7 +70,7 @@ export class GardenWorker {
     this.entrance = entrance;
     this.interior = interior;
     this.groundHeight = groundHeight;
-    this.profile = CONVERSATIONS[index % CONVERSATIONS.length];
+    this.profile = FARMERS[index % FARMERS.length];
     this.plotIndex = index % plots.length;
     this.phase = "toCrop";
     this.timer = 0;
@@ -247,7 +235,7 @@ export function buildGardenColony({ tomato, wheat, dome, aliens, ground, baseBou
   for (let index = 0; index < 3; index++) {
     const variant = index % 2 ? "gray" : "green";
     const visual = createAlienFarmer(aliens[variant], variant);
-    visual.name = CONVERSATIONS[index].name;
+    visual.name = FARMERS[index].name;
     group.add(visual);
     workers.push(new GardenWorker({ index, visual, plots, entrance, interior, groundHeight: heightAt }));
   }

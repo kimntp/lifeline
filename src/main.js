@@ -19,6 +19,8 @@ import { GardenMission } from "./garden-mission.js";
 import { createSampleStation } from "./sample-station.js";
 
 const session = new GameSession();
+// Mission progress resets on reload; saved world locations are independent.
+const gardenMission = new GardenMission();
 const BASE_SPAWN_STORAGE_KEY = "lifeline:level-1:base-spawn";
 const PLAYER_SPAWN_STORAGE_KEY = "lifeline:level-1:player-spawn";
 const COLONY_STORAGE_KEY = "lifeline:level-1:garden-colony";
@@ -32,6 +34,7 @@ const shared = {
   camera: null,
   city: null,
   spaceBase: null,
+  sampleStation: null,
   iceBase: null,
   colony: null,
   colonyModels: null,
@@ -1044,6 +1047,48 @@ async function iceBaseHere() {
     gameMenu.status(error.message);
   } finally {
     placingIceBase = false;
+  }
+}
+
+async function depositSurveySamples() {
+  if (session.paused || flags.missionTransition || gameMenu.transitioning || !gardenMission.beginDeposit()) return;
+  flags.missionTransition = true;
+  clearGameInput();
+  try {
+    await gameMenu.transitionToGame(() => {
+      const spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, null);
+      shared.player.position.copy(spawn.position);
+      shared.player.position.y += shared.playerFootOffset;
+      shared.player.rotation.y = spawn.yaw;
+      shared.playerState.velocity.set(0, 0, 0);
+      shared.playerState.grounded = true;
+      shared.playerState.groundY = spawn.position.y;
+      shared.playerState.support = shared.spaceBase.userData.foundationBounds;
+      shared.look.yaw = spawn.cameraYaw;
+      shared.look.pitch = 0;
+      _loopShared.cameraMode = "third-person";
+      _loopShared.smoothInited = false;
+      _loopShared.prevPlayerPos = shared.player.position.clone();
+      shared.stateMachine.setPreview("");
+      shared.mixer.update(0);
+      shared.camera.position.set(shared.player.position.x, shared.player.position.y + 2.2,
+        shared.player.position.z + shared.cameraDistance);
+      shared.camera.lookAt(shared.player.position.x, shared.player.position.y + 1.2, shared.player.position.z);
+      gardenMission.finishDeposit();
+      shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission);
+      shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
+      try {
+        localStorage.setItem(PLAYER_SPAWN_STORAGE_KEY, JSON.stringify({ x: spawn.position.x, z: spawn.position.z,
+          yaw: spawn.yaw, cameraYaw: spawn.cameraYaw }));
+      } catch {}
+    });
+  } catch (error) {
+    console.error("[survey] Sample deposit transition failed:", error);
+  } finally {
+    if (gardenMission.depositing) gardenMission.cancelDeposit();
+    shared.colonyInteraction.refresh();
+    flags.missionTransition = false;
+    clearGameInput();
   }
 }
 

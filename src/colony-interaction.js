@@ -2,7 +2,9 @@ import { dialogueSession } from "./dialogue-session.js";
 import { GARDEN_COLONY, nearestGardenWorker } from "./garden-colony.js";
 import { GardenMission, GROWING_CONDITIONS, nearestSamplePlot, surveyDialogue } from "./garden-mission.js";
 
-export function createColonyInteraction(colony) {
+export function createColonyInteraction(colony, { mission = new GardenMission(), onProgress, onSample, onDeposit,
+  getBaseTarget = () => null, getFootOffset = () => 0, channel = dialogueSession } = {}) {
+  const conversationOwner = {};
   const root = document.createElement("div");
   root.id = "colony-interface";
   root.hidden = true;
@@ -25,9 +27,8 @@ export function createColonyInteraction(colony) {
       <div class="apollo-message"><h3>APOLLO <span>Field assistant</span></h3>
         <p id="mission-apollo" role="status" aria-live="polite"></p></div>
     </aside>
-    <p id="apollo-radio" class="apollo-radio" role="status" aria-live="polite" hidden></p>
     <p id="colony-talk-prompt" class="colony-talk-prompt" hidden></p>
-    <section id="colony-dialogue" class="colony-dialogue" aria-label="Alien conversation" hidden>
+    <section id="colony-dialogue" class="dialogue-box colony-dialogue" aria-label="Alien conversation" hidden>
       <p id="colony-speaker" class="colony-eyebrow"></p>
       <p id="colony-dialogue-text" aria-live="polite"></p>
       <p class="colony-dialogue-hint">E — continue · Walk away to leave</p>
@@ -61,7 +62,6 @@ export function createColonyInteraction(colony) {
     element("mission-water").hidden = !mission.waterKnown;
     if (mission.waterKnown) element("mission-water").textContent = `Ares Water Colony · X ${mission.coordinates.x}, Z ${mission.coordinates.z} · local survey grid`;
     element("mission-apollo").textContent = mission.apolloMessage;
-    element("apollo-radio").textContent = `APOLLO · ${mission.apolloMessage}`;
   }
   function progress(changed) { if (changed) onProgress?.(); }
   function close() {
@@ -104,12 +104,20 @@ export function createColonyInteraction(colony) {
       const deposit = returning && baseInReach(player);
       if (conversation && (!conversation.visual.visible
         || Math.hypot(player.position.x - conversation.visual.position.x, player.position.z - conversation.visual.position.z) > 4)) close();
-      if (keyboard?.consumeJustPressed("KeyE")) {
+      const blocked = channel.isBlocked(conversationOwner);
+      if (keyboard?.consumeJustPressed("KeyE") && !blocked) {
         if (conversation) {
           line++;
           if (line >= lines.length) close();
           else showLine();
-        } else if (worker) {
+        } else if (deposit) {
+          onDeposit?.();
+        } else if (sample) {
+          if (mission.collect(sample.type)) {
+            onSample?.(sample.type);
+            onProgress?.();
+          }
+        } else if (worker && mission.phase !== "depositing" && channel.begin(conversationOwner)) {
           conversation = worker; line = 0;
           lines = surveyDialogue(mission, worker.profile, colony.site);
           worker.talking = true;
@@ -117,8 +125,12 @@ export function createColonyInteraction(colony) {
           showLine();
         }
       }
-      prompt.hidden = Boolean(conversation) || !worker;
-      if (worker) prompt.textContent = `E — Talk to ${worker.profile.name}`;
+      const nextSample = nearestSamplePlot(colony, player.position, mission, getFootOffset());
+      prompt.hidden = blocked || Boolean(conversation) || mission.phase === "depositing" || (!deposit && !nextSample && !worker);
+      prompt.textContent = deposit ? "E — Deposit samples at base"
+        : nextSample ? `E — ${nextSample.type === "soil" ? "Collect soil sample" : `Take ${nextSample.type} sample`}`
+        : worker ? `E — ${mission.explained && !mission.waterKnown ? "Ask about water" : "Talk"} · ${worker.profile.name}` : "";
+      renderMission();
     },
   };
 }

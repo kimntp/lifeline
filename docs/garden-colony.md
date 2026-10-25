@@ -18,8 +18,9 @@ farmers cannot be attacked. Hostile enemies and their combat system are removed.
 E starts a nearby farmer's conversation, advances it, and closes it after the
 last line. Walking away also closes it. Conversations pause that farmer's
 routine. The first level is peaceful: its dialogue explains growing conditions,
-sample collection, and the neighboring colony's water supply. The company's
-underlying objective remains background story data, outside this first survey.
+sample collection, and the neighboring colony's water supply. The old dialogue
+and hostile colony objective have been removed; `surveyDialogue` is the single
+source of alien conversations for this level.
 Pause freezes the colony and hides its interaction UI.
 
 ## Peaceful first survey
@@ -31,7 +32,7 @@ Pause freezes the colony and hides its interaction UI.
 Press Q (or use the Q Objectives button) to slide the objectives tab open or
 closed. New surveys initially show only “Talk to one of the aliens.” Sampling
 and water tasks appear after reading the growing-condition explanation.
-Apollo's radio message stays visible when the tab is closed.
+Apollo's mission message appears inside the objectives tab.
 2. Near any crop bed, press E to collect a soil sample. Collect a tomato cutting
    at a tomato bed and a wheat cutting at a wheat bed. Each sample is collected
    once; crops remain alive. Sample prompts take priority over nearby chat.

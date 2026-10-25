@@ -153,7 +153,7 @@ test("E shares peaceful growing-condition dialogue and closes when walking away"
     assert.equal(worker.talking, false);
     interaction.setVisible(false);
     assert.equal(root.hidden, true);
-    assert.equal(GARDEN_COLONY.objective, "Enslave farmers and export crops to Earth");
+    assert.equal(GARDEN_COLONY.disposition, "peaceful");
   } finally {
     globalThis.document = originalDocument;
   }
