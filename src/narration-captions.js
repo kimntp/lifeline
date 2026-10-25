@@ -1,8 +1,9 @@
-import { buildScriptCues, progressiveCaptionAtTime } from "./caption-timing.mjs";
+import { buildScriptCues, progressiveCaptionAtTime, groupCaptionPages } from "./caption-timing.mjs";
 
 const activeCaptions = new WeakMap();
 
 export function attachNarrationCaptions(audio, url) {
+  audio ??= Object.assign(new EventTarget(), { currentTime: 0, duration: NaN, paused: true, ended: false });
   let box = document.getElementById("narration-captions");
   if (!box) {
     box = document.createElement("div");
@@ -28,10 +29,10 @@ export function attachNarrationCaptions(audio, url) {
   let script = "";
   let cues = [];
   let frame = null;
-  let started = false;
+  let started = false, fullText = "", forced = false, scriptTimingLocked = false;
   const update = () => {
     if (activeCaptions.get(box) !== owner) return;
-    const text = started && !audio.ended ? progressiveCaptionAtTime(cues, audio.currentTime) : "";
+    const text = forced ? fullText : started && !audio.ended ? progressiveCaptionAtTime(cues, audio.currentTime) : "";
     if (line.textContent !== text) line.textContent = text;
     box.hidden = !text;
   };
@@ -56,7 +57,10 @@ export function attachNarrationCaptions(audio, url) {
     });
   }
   const refreshTiming = () => {
-    if (script) cues = buildScriptCues(script, audio.duration);
+    if (script && !scriptTimingLocked) {
+      cues = buildScriptCues(script, audio.duration);
+      scriptTimingLocked = cues.length > 0;
+    }
     update();
   };
   listen("loadedmetadata", refreshTiming);
@@ -68,13 +72,14 @@ export function attachNarrationCaptions(audio, url) {
   load.then((data) => {
     if (activeCaptions.get(box) !== owner) return;
     speaker.textContent = data.speaker || "Apollo";
+    fullText = data.text || (data.cues ?? []).map(cue => cue.text).join(" ");
     if (Array.isArray(data.cues) && data.cues.length) {
       if (!data.cues.every((cue, i) =>
         Number.isFinite(cue.start) && Number.isFinite(cue.end) && cue.end > cue.start &&
         typeof cue.text === "string" && (i === 0 || cue.start >= data.cues[i - 1].end))) {
         throw new Error("Invalid caption timeline");
       }
-      cues = data.cues;
+      cues = groupCaptionPages(data.cues);
     } else if (typeof data.text === "string" && data.text.trim()) {
       script = data.text;
       refreshTiming();
@@ -83,10 +88,17 @@ export function attachNarrationCaptions(audio, url) {
   }).catch((error) => {
     console.warn("Narration captions unavailable.", error);
   });
-  return () => {
+  const detach = () => {
     cancelAnimationFrame(frame);
     for (const [event, callback] of listeners) audio.removeEventListener(event, callback);
     if (activeCaptions.get(box) === owner) { activeCaptions.delete(box); box.hidden = true; }
   };
+  detach.complete = () => {
+    forced = true;
+    cancelAnimationFrame(frame); frame = null;
+    for (const [event, callback] of listeners) audio.removeEventListener(event, callback);
+    update();
+  };
+  return detach;
 
 }

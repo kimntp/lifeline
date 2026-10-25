@@ -1,12 +1,15 @@
+import { FARMERS } from "../src/farmer-profiles.mjs";
+import { buildAlignedCaptionCues } from "../src/caption-timing.mjs";
 import { APOLLO_DIALOGUE } from "../src/apollo-dialogue.mjs";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { GardenMission, surveyDialogue } from "../src/garden-mission.js";
 
-export const FARMER_VOICES = {
-  Iri: "JBFqnCBsd6RMkjVDRZzb", // George
-  Vela: "EXAVITQu4vr4xnSDxMaL", // Sarah
-  Naru: "onwK4e9ZLuTAKqWW03F9", // Daniel
+const ROLE_VOICES = {
+  Soilkeeper: "JBFqnCBsd6RMkjVDRZzb", // George: Iri and Tavi
+  Grower: "EXAVITQu4vr4xnSDxMaL", // Sarah: Vela and Seli
+  Seedkeeper: "onwK4e9ZLuTAKqWW03F9", // Daniel: Naru and Oru
 };
+export const FARMER_VOICES = Object.fromEntries(FARMERS.map(farmer => [farmer.name, ROLE_VOICES[farmer.role]]));
 
 // Every Apollo utterance uses this voice, including the intro and verification feedback.
 export const APOLLO_VOICE = "onwK4e9ZLuTAKqWW03F9"; // Daniel
@@ -88,7 +91,9 @@ export function createAlienVoiceHandler({ client = new ElevenLabsClient(), now =
       if (!body || !isAllowedDialogueReply(body)) return send(400, "Choose a scripted dialogue reply.");
     } catch { return send(400, "Invalid voice request."); }
     const voice = body.farmer === "Apollo" ? APOLLO_VOICE : FARMER_VOICES[body.farmer];
-    const key = `${voice}:${body.text}`;
+    const model = body.farmer === "Apollo" ? "eleven_v4" : "eleven_flash_v2_5";
+    const timed = body.farmer === "Apollo" && body.includeTimestamps === true;
+    const key = `${model}:${voice}:${timed}:${body.text}`;
     try {
       if (!cache.has(key) && !pending.has(key)) {
         const time = now(), ip = req.socket.remoteAddress || "local";
@@ -97,11 +102,21 @@ export function createAlienVoiceHandler({ client = new ElevenLabsClient(), now =
         if (entry.count >= 12 || requests.size >= 512 || pending.size >= 4) return send(429, "Voice service busy. Try again shortly.");
         entry.count++; requests.set(ip, entry);
         const generated = (async () => {
-          const stream = await client.textToSpeech.convert(voice, {
-            text: body.text, modelId: "eleven_flash_v2_5", outputFormat: "mp3_44100_128",
-            voiceSettings: { stability: 0.55, similarityBoost: 0.75 },
-          }, { timeoutInSeconds: 45, maxRetries: 0 });
-          const buffer = Buffer.from(await new Response(stream).arrayBuffer());
+          const options = {
+            text: body.text, modelId: model, outputFormat: "mp3_44100_128",
+            voiceSettings: { stability: body.farmer === "Apollo" ? 0.5 : 0.55, similarityBoost: 0.75 },
+          };
+          const requestOptions = { timeoutInSeconds: 45, maxRetries: 0 };
+          let buffer;
+          if (timed) {
+            const speech = await client.textToSpeech.convertWithTimestamps(voice, options, requestOptions);
+            const cues = buildAlignedCaptionCues(speech.normalizedAlignment ?? speech.alignment);
+            if (!speech.audioBase64 || !cues.length) throw new Error("Missing speech timing");
+            buffer = Buffer.from(JSON.stringify({ audioBase64: speech.audioBase64, cues }));
+          } else {
+            const stream = await client.textToSpeech.convert(voice, options, requestOptions);
+            buffer = Buffer.from(await new Response(stream).arrayBuffer());
+          }
           if (!buffer.length || buffer.length > 4 * 1024 * 1024) throw new Error("Invalid voice audio");
           while (cache.size >= 64 || cacheBytes + buffer.length > 24 * 1024 * 1024) {
             const first = cache.keys().next().value;
@@ -116,7 +131,7 @@ export function createAlienVoiceHandler({ client = new ElevenLabsClient(), now =
       const audio = cache.get(key) ?? await pending.get(key);
       if (res.destroyed) return;
       res.statusCode = 200;
-      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Content-Type", timed ? "application/json" : "audio/mpeg");
       res.setHeader("Content-Length", String(audio.length));
       res.end(audio);
     } catch { if (!res.destroyed) send(503, "Dialogue voice unavailable. Continue using the displayed text."); }

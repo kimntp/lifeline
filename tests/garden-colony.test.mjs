@@ -141,7 +141,7 @@ test("E shares peaceful growing-condition dialogue and closes when walking away"
       lines.push(elements.get("#colony-dialogue-text").textContent);
     }
     assert.ok(lines.join(" ").includes("regenerate the soil"));
-    assert.ok(lines.join(" ").includes("peaceful"));
+    assert.ok(lines.join(" ").includes("updated your objectives"));
     assert.equal(elements.get("#mission-conditions").hidden, false);
     pressed = true;
     interaction.update(player, keyboard);

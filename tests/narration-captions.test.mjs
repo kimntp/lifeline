@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildCaptionCues, captionAtTime, buildScriptCues, progressiveCaptionAtTime } from "../src/caption-timing.mjs";
+import { buildCaptionCues, captionAtTime, buildScriptCues, progressiveCaptionAtTime, buildAlignedCaptionCues, groupCaptionPages } from "../src/caption-timing.mjs";
 
 const word = (text, start, end) => ({ type: "word", text, start, end });
 
@@ -85,6 +85,9 @@ test("caption display follows playback, seeking, pauses, and ending", async () =
     scripted.currentTime = 3;
     scripted.dispatchEvent(new Event("timeupdate"));
     assert.equal(elements.get("narration-line").textContent, "One two three four");
+    scripted.duration = 20;
+    scripted.dispatchEvent(new Event("durationchange"));
+    assert.equal(elements.get("narration-line").textContent, "One two three four", "metadata changes cannot restart revealed words");
   } finally {
     Object.assign(globalThis, original);
   }
@@ -129,5 +132,42 @@ test("inline generated captions clean up without erasing a newer Apollo message"
     assert.equal(elements.get("narration-line").textContent, "Second");
     detachSecond();
     assert.equal(elements.get("narration-captions").hidden, true);
+    const complete = attachNarrationCaptions(null, { speaker: "Apollo", text: "Reveal this entire message immediately." });
+    complete.complete();
+    await new Promise(done => setImmediate(done));
+    assert.equal(elements.get("narration-line").textContent, "Reveal this entire message immediately.");
+    assert.equal(elements.get("narration-captions").hidden, false);
+    complete();
   } finally { Object.assign(globalThis, originals); }
+});
+
+
+test("provider word times keep a sentence together through pauses and do not jump on estimated boundaries", () => {
+  const text = "Hello Mars. We thrive.";
+  const characters = [...text];
+  const starts = characters.map((_, index) => index < 12 ? index * 0.1 : 10 + (index - 12) * 0.1);
+  const cues = buildAlignedCaptionCues({ characters, characterStartTimesSeconds: starts, characterEndTimesSeconds: starts.map(time => time + 0.09) });
+  assert.equal(cues.length, 1);
+  assert.equal(cues[0].text, "Hello Mars. We thrive.");
+  assert.equal(progressiveCaptionAtTime(cues, 0.4), "Hello");
+  assert.equal(progressiveCaptionAtTime(cues, 8), "Hello Mars.");
+  assert.equal(progressiveCaptionAtTime(cues, 10), "Hello Mars. We");
+  const long = "This is a long single sentence that must not clear the dialogue box halfway through while Apollo is still speaking the same thought and explaining the mission.";
+  assert.equal(buildScriptCues(long, 30).length, 1);
+});
+
+
+test("caption pages fill with several whole sentences without changing word timing", () => {
+  const sentences = Array.from({ length: 8 }, (_, index) => ({
+    text: `Sentence ${index} explains the mission and keeps the conversation visible.`,
+    start: index * 5, end: (index + 1) * 5,
+    words: [{ text: `Sentence ${index}`, start: index * 5, end: index * 5 + 1 }],
+  }));
+  const pages = groupCaptionPages(sentences);
+  assert.ok(pages.length < sentences.length);
+  assert.ok(pages.length > 1);
+  assert.ok(pages.every(page => page.text.length <= 320));
+  assert.equal(pages.map(page => page.text).join(" "), sentences.map(sentence => sentence.text).join(" "));
+  assert.deepEqual(pages.flatMap(page => page.words), sentences.flatMap(sentence => sentence.words));
+  assert.equal(sentences[0].text.startsWith("Sentence 0 explains"), true);
 });

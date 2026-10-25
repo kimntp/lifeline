@@ -97,6 +97,24 @@ test("correct speech goes directly to the farmer without any Apollo verification
     dub.finish(); step("KeyE");
     assert.equal(calls.at(-1).speaker, "Apollo");
     assert.match(calls.at(-1).entry.text, /Alien-reported/);
-    assert.ok(messages.length > 0, "mission assistant messages are sent to the shared narrator");
+    assert.equal(messages.length, 0, "objective-panel updates must remain silent");
   } finally { interaction?.destroy(); globalThis.document = oldDocument; }
+});
+
+
+test("Enter completes Apollo's text; the next Enter dismisses it before queued speech can begin", () => {
+  const f = fixture();
+  let completeCalls = 0;
+  f.dubbing.complete = () => { completeCalls++; f.dubbing.busy = false; f.options.onChange({ status: "completed" }); };
+  f.dubbing.stop = () => { f.dubbing.busy = false; };
+  f.narrator.startIntro(); f.narrator.setPaused(false); f.narrator.update();
+  f.narrator.say("Next message");
+  assert.equal(f.narrator.handleSkip(), true);
+  assert.equal(completeCalls, 1);
+  f.narrator.update();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.channel.begin({}), false);
+  f.narrator.handleSkip(); f.narrator.update();
+  assert.equal(f.calls[1].entry.text, "Next message");
+  f.narrator.destroy();
 });

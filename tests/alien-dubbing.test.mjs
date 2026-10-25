@@ -124,3 +124,52 @@ test("E cannot interrupt dubbed replies; ending and walking away clean up playba
     assert.equal(channel.busy, false);
   } finally { interaction?.destroy(); globalThis.document = original; }
 });
+
+
+test("double-tap completion stops voice permanently, reveals captions, and preserves the conversation lock", async () => {
+  let completed = 0, detached = 0;
+  const f = fixture({ onAudio: () => {
+    const detach = () => { detached++; };
+    detach.complete = () => { completed++; };
+    return detach;
+  } });
+  await f.dub.start(reply, "Iri");
+  assert.equal(f.dub.complete(), true);
+  assert.equal(f.dub.busy, false);
+  assert.equal(f.clips[0].paused, true);
+  assert.equal(completed, 1);
+  assert.equal(detached, 0);
+  assert.equal(f.channel.begin({}), false);
+  const plays = f.clips[0].playCount;
+  f.controller.setPaused(true); f.controller.setPaused(false); f.dub.setPaused(false);
+  assert.equal(f.clips[0].playCount, plays);
+  f.dub.stop(); assert.equal(detached, 1);
+});
+
+test("completing during generation shows the full script and ignores late audio", async () => {
+  let resolve, completed = 0, requested;
+  const f = fixture({ request: () => new Promise(done => { resolve = done; }), onAudio: (audio, entry) => {
+    assert.equal(audio, null); requested = entry.text;
+    const detach = () => {}; detach.complete = () => { completed++; }; return detach;
+  } });
+  const start = f.dub.start(reply, "Apollo");
+  f.dub.complete();
+  resolve(response()); await start;
+  assert.equal(requested, reply.text);
+  assert.equal(completed, 1);
+  assert.equal(f.clips.length, 0);
+  assert.equal(f.dub.busy, false);
+  f.dub.destroy();
+});
+
+test("Apollo timed audio passes provider cues to the caption view", async () => {
+  const cues = [{ start: 0, end: 1, text: "Hello" }];
+  let captured;
+  const f = fixture({ request: async (_url, options) => {
+    assert.equal(JSON.parse(options.body).includeTimestamps, true);
+    return { ok: true, headers: { get: () => "application/json" }, json: async () => ({ audioBase64: "AQID", cues }) };
+  }, onAudio: (_audio, entry) => { captured = entry; } });
+  await f.dub.start(reply, "Apollo");
+  assert.deepEqual(captured.cues, cues);
+  f.dub.destroy();
+});

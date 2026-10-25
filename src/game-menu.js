@@ -38,7 +38,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
     <button id="pause-button" class="pause-button" type="button" aria-label="Pause game" hidden>
       <span aria-hidden="true">Ⅱ</span> Pause <kbd>P</kbd>
     </button>
-    <button id="mute-button" class="pause-button mute-button" type="button" aria-pressed="false" hidden>Mute audio</button>
+    <button id="mute-button" class="pause-button mute-button" type="button" aria-pressed="false" hidden>Mute audio <kbd>M</kbd></button>
     <main id="game-menu" class="menu-shell" role="dialog" aria-modal="true" aria-labelledby="menu-title">
       <img id="home-background" class="home-background" src="${new URL("../assets/background.png", import.meta.url).href}"
         width="1470" height="688" alt="" aria-hidden="true" draggable="false" hidden>
@@ -61,7 +61,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
           <div id="menu-actions" class="menu-actions">
             <button id="play-button" class="menu-button primary" type="button" disabled><span class="start-arrow" aria-hidden="true">&gt;</span><span id="play-label">Loading world…</span></button>
             <button id="instructions-button" class="menu-button" type="button">Instructions</button>
-            <button id="menu-mute-button" class="menu-button" type="button" aria-pressed="false" hidden>Mute audio</button>
+            <button id="menu-mute-button" class="menu-button" type="button" aria-pressed="false" hidden>Mute audio <kbd>M</kbd></button>
             <button id="home-button" class="menu-button quiet" type="button" hidden>Home screen</button>
           </div>
         </div>
@@ -77,6 +77,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
             <div><dt>Left click · baton</dt><dd>One stun puts an alien to sleep. The last alien stays downed and talkable.</dd></div>
             <div><dt>Left click · pickaxe</dt><dd>Face an ice block and strike it three times to mine the ice core. Move close; allow time between swings.</dd></div>
             <div><dt>Q</dt><dd>Open / close objectives</dd></div>
+            <div><dt>Enter</dt><dd>Complete text / skip dialogue voice</dd></div>
             <div><dt>V</dt><dd>Speak / retry player dialogue</dd></div>
             <div><dt>H</dt><dd>Mining swing</dd></div>
             <div><dt>F</dt><dd>Toggle free camera</dd></div>
@@ -130,7 +131,8 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
   function updateMuteButtons() {
     const muted = isNarrationMuted();
     for (const id of ["mute-button", "menu-mute-button"]) {
-      element(id).textContent = muted ? "Unmute audio" : "Mute audio";
+      element(id).innerHTML = `${muted ? "Unmute audio" : "Mute audio"} <kbd>M</kbd>`;
+      element(id).setAttribute("aria-keyshortcuts", "M");
       element(id).setAttribute("aria-pressed", String(muted));
     }
   }
@@ -257,9 +259,9 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
       element("pause-button").hidden = session.paused;
       element("mute-button").hidden = session.paused;
       element("menu-mute-button").hidden = !paused;
-      element("home-logo").hidden = !home;
+      element("home-logo").hidden = !(home || paused);
       element("menu-eyebrow").textContent = home ? "" : "LIFELINE";
-      element("menu-eyebrow").hidden = home;
+      element("menu-eyebrow").hidden = home || paused;
       element("menu-title").textContent = home ? "Lifeline" : paused ? "Paused" : instructions ? "Instructions" : "Animations";
       element("menu-description").textContent = paused ? "Take a breath. Your world can wait." : "";
       element("menu-description").hidden = !paused;

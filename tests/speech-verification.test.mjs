@@ -127,8 +127,14 @@ test("E cannot skip speech; only a verified attempt unlocks the alien reply and 
     assert.match(expected, /How are you able/);
     press("KeyE");
     assert.equal(node("#colony-dialogue-text").textContent, expected);
+    assert.equal(node("#speech-mic-status").hidden, true);
     press("KeyV"); await new Promise(resolve => setImmediate(resolve));
+    assert.match(node("#speech-mic-status").textContent, /Connecting microphone/);
+    assert.equal(node("#speech-mic-status").hidden, false);
+    callbacks.onReady();
+    assert.equal(node("#speech-mic-status").textContent, "MIC LIVE - Speak now");
     callbacks.onCommit("I want tomatoes.");
+    assert.equal(node("#speech-mic-status").hidden, true);
     press("KeyE");
     assert.equal(node("#colony-dialogue-text").textContent, expected);
     assert.equal(mission.explained, false);
@@ -146,7 +152,10 @@ test("E cannot skip speech; only a verified attempt unlocks the alien reply and 
     player.position.x = 0; press("KeyE");
     press("KeyV"); await new Promise(resolve => setImmediate(resolve));
     const stale = callbacks;
+    callbacks.onReady();
+    assert.equal(node("#speech-mic-status").hidden, false);
     interaction.setVisible(false);
+    assert.equal(node("#speech-mic-status").hidden, true);
     stale.onCommit(node("#colony-dialogue-text").textContent);
     assert.equal(stale.signal.aborted, true);
     assert.equal(mission.waterKnown, false);

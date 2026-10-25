@@ -7,7 +7,7 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
   root.id = "ice-colony-interface";
   root.hidden = true;
   root.innerHTML = `
-    <div class="colony-location"><p class="colony-eyebrow">REGION 02</p><h2>Ares — Water Colony</h2><p id="ice-status"></p></div>
+    <div class="colony-location"><p class="colony-eyebrow">REGION 02</p><h2>Ares - Water Colony</h2><p id="ice-status" hidden></p></div>
     <button id="ice-objectives-toggle" class="objectives-toggle" type="button">Q · Objectives</button>
     <aside id="ice-mission-panel" class="mission-panel" aria-label="Colony 2 objectives">
       <p class="colony-eyebrow">COLONY 2</p><p id="ice-objectives"></p>

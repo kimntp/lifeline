@@ -1,3 +1,4 @@
+import { FARMERS } from "../src/farmer-profiles.mjs";
 import { APOLLO_DIALOGUE } from "../src/apollo-dialogue.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -95,4 +96,54 @@ test("Apollo intro, dialogue, verification feedback and mission updates all use 
     assert.equal((await call(handler, payload)).status, 200, text);
   }
   assert.equal(isAllowedDialogueReply({ farmer: "Apollo", text: "arbitrary unapproved speech" }), false);
+});
+
+
+test("Apollo laughter is an expressive audio tag, not a word read by Flash", async () => {
+  assert.match(APOLLO_DIALOGUE.intro, /\[laughs\]/);
+  assert.doesNotMatch(APOLLO_DIALOGUE.intro, /\[chuckles\]/);
+  const handler = createAlienVoiceHandler({ client: fakeClient(async (voice, request) => {
+    assert.equal(voice, APOLLO_VOICE);
+    assert.equal(request.modelId, "eleven_v4");
+    assert.equal(request.voiceSettings.stability, 0.5);
+    assert.match(request.text, /\[laughs\]/);
+    return stream();
+  }) });
+  assert.equal((await call(handler, { farmer: "Apollo", text: APOLLO_DIALOGUE.intro })).status, 200);
+});
+
+
+test("timed Apollo requests return real alignment and cache separately from plain MP3", async () => {
+  let calls = 0;
+  const text = "Hello Mars.";
+  const alignment = { characters: [...text], characterStartTimesSeconds: [...text].map((_, i) => i * 0.1), characterEndTimesSeconds: [...text].map((_, i) => i * 0.1 + 0.09) };
+  const handler = createAlienVoiceHandler({ client: { textToSpeech: {
+    convertWithTimestamps: async () => { calls++; return { audioBase64: "AQID", normalizedAlignment: alignment }; },
+  } } });
+  const result = await call(handler, { farmer: "Apollo", text: APOLLO_DIALOGUE.intro, includeTimestamps: true });
+  assert.equal(result.status, 200);
+  assert.equal(result.headers["Content-Type"], "application/json");
+  const body = JSON.parse(result.output.toString());
+  assert.equal(body.audioBase64, "AQID");
+  assert.equal(body.cues[0].text, "Hello Mars.");
+  assert.ok(Math.abs(body.cues[0].words[1].start - 0.6) < 1e-9);
+  await call(handler, { farmer: "Apollo", text: APOLLO_DIALOGUE.intro, includeTimestamps: true });
+  assert.equal(calls, 1);
+});
+
+
+test("every spawned farmer, including Seli, Tavi and Oru, can request their mapped voice", async () => {
+  assert.deepEqual(Object.keys(FARMER_VOICES).sort(), FARMERS.map(farmer => farmer.name).sort());
+  const voices = [];
+  const handler = createAlienVoiceHandler({ client: fakeClient(async voice => { voices.push(voice); return stream(); }) });
+  for (const farmer of FARMERS) {
+    assert.ok(FARMER_VOICES[farmer.name], `${farmer.name} needs a voice`);
+    const line = surveyDialogue(new GardenMission(), farmer, site).find(entry => entry.dub);
+    const body = { farmer: farmer.name, text: line.text, site };
+    assert.equal(isAllowedFarmerReply(body), true, farmer.name);
+    const result = await call(handler, body);
+    assert.equal(result.status, 200, farmer.name);
+    assert.equal(result.headers["Content-Type"], "audio/mpeg");
+  }
+  assert.deepEqual(new Set(voices), new Set(Object.values(FARMER_VOICES)));
 });

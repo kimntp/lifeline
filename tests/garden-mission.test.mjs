@@ -15,6 +15,7 @@ function finishSurvey(mission, order = ["soil", "tomato", "wheat"]) {
 test("mission gates sampling and deposits until peaceful contact and every objective is complete", () => {
   const mission = new GardenMission();
   assert.equal(mission.phase, "contact");
+  assert.doesNotMatch(mission.apolloMessage, /Peaceful contact only/i);
   assert.deepEqual(mission.objectives.map(item => item.label), ["Talk to one of the aliens"]);
   assert.equal(mission.collect("soil", "shovel"), false);
   assert.equal(mission.learnWater({ x: 0, z: 0 }), false);
