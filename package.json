@@ -2,10 +2,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "transcribe:intro": "node scripts/transcribe-intro.mjs"
+    "preview": "vite preview"
   },
   "dependencies": {
+    "@elevenlabs/client": "^1.30.0",
+    "@elevenlabs/elevenlabs-js": "^2.74.0",
     "three": "^0.184.0"
   },
   "devDependencies": {

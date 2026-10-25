@@ -65,6 +65,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
             <div><dt>Mouse / scroll</dt><dd>Look / zoom</dd></div>
             <div><dt>E</dt><dd>Talk / collect sample / deposit</dd></div>
             <div><dt>Q</dt><dd>Open / close objectives</dd></div>
+            <div><dt>V</dt><dd>Speak / retry player dialogue</dd></div>
             <div><dt>H</dt><dd>Mining swing</dd></div>
             <div><dt>F</dt><dd>Toggle free camera</dd></div>
             <div><dt>M</dt><dd>Mute / unmute audio</dd></div>

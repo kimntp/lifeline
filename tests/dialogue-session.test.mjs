@@ -1,3 +1,4 @@
+import { verifiedSpeechFactory, silentDubbingFactory } from "./helpers/verified-speech.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
@@ -77,7 +78,7 @@ test("alien interaction cannot interrupt narration, and retains ownership while 
       visual: { visible: true, position: new THREE.Vector3(), rotation: { y: 0 } },
       profile: { name: "Iri", role: "Soilkeeper", lines: ["Welcome.", "Our garden."] },
     };
-    const interaction = createColonyInteraction({ site: { x: 0, z: 0 }, workers: [worker], plots: [] }, { channel });
+    const interaction = createColonyInteraction({ site: { x: 0, z: 0 }, workers: [worker], plots: [] }, { channel, dubbingFactory: silentDubbingFactory, speechFactory: verifiedSpeechFactory });
     const player = { position: new THREE.Vector3(0, 0, 1) };
     const press = { consumeJustPressed: () => true };
     interaction.update(player, press);

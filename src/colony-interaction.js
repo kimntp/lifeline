@@ -1,9 +1,13 @@
+import { createAlienDubbing } from "./alien-dubbing.js";
+import { renderSpeechWords } from "./speech-word-display.mjs";
+import { createSpeechChallenge } from "./speech-verification.mjs";
+import { connectSpeechAttempt } from "./elevenlabs-speech.js";
 import { dialogueSession } from "./dialogue-session.js";
 import { GARDEN_COLONY, nearestGardenWorker } from "./garden-colony.js";
 import { GardenMission, GROWING_CONDITIONS, nearestSamplePlot, surveyDialogue } from "./garden-mission.js";
 
-export function createColonyInteraction(colony, { mission = new GardenMission(), onProgress, onSample, onDeposit,
-  getBaseTarget = () => null, getFootOffset = () => 0, channel = dialogueSession } = {}) {
+export function createColonyInteraction(colony, { mission = new GardenMission(), onProgress, onSample, onDeposit, onApolloMessage,
+  getBaseTarget = () => null, getFootOffset = () => 0, channel = dialogueSession, speechFactory = createSpeechChallenge, dubbingFactory = createAlienDubbing } = {}) {
   const conversationOwner = {};
   const root = document.createElement("div");
   root.id = "colony-interface";
@@ -31,7 +35,13 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
     <section id="colony-dialogue" class="dialogue-box colony-dialogue" aria-label="Alien conversation" hidden>
       <p id="colony-speaker" class="colony-eyebrow"></p>
       <p id="colony-dialogue-text" aria-live="polite"></p>
-      <p class="colony-dialogue-hint">E — continue · Walk away to leave</p>
+      <div id="speech-verification" hidden>
+        <p class="speech-instructions">Read the line aloud. Matched words glow green. V starts/cancels the microphone. Audio is sent to ElevenLabs.</p>
+        <p id="speech-transcript"></p>
+        <p id="speech-feedback" role="status" aria-live="polite"></p>
+        <p id="speech-differences"></p>
+      </div>
+      <p id="colony-dialogue-hint" class="colony-dialogue-hint">E — continue · Walk away to leave</p>
     </section>`;
   document.body.appendChild(root);
   const element = id => root.querySelector(`#${id}`);
@@ -40,6 +50,33 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
   const dialogue = element("colony-dialogue");
   const distanceLabel = element("colony-distance");
   let conversation = null, lines = [], line = 0, renderedRevision = -1, objectivesOpen = false;
+  let visible = false;
+  let lastMissionMessage = null;
+  const dubbing = dubbingFactory({ owner: conversationOwner, site: colony.site, onChange: state => {
+    if (!conversation || !lines[line]?.dub) return;
+    const nextHint = "E - continue / Walk away to leave";
+    element("colony-dialogue-hint").textContent = state.status === "loading" ? "Preparing voice..."
+      : state.status === "playing" ? "Speaking... E continues when the reply finishes."
+      : state.status === "paused" ? "Voice paused. Resume the game to continue."
+      : state.status === "error" ? `Voice unavailable. ${nextHint}`
+      : nextHint;
+  } });
+  const speech = speechFactory({ connect: connectSpeechAttempt, onChange: state => {
+    renderSpeechWords(element("colony-dialogue-text"), state);
+    element("speech-transcript").textContent = state.transcript ? `You said: ${state.transcript}` : "";
+    if (element("speech-feedback").textContent !== state.message) element("speech-feedback").textContent = state.message;
+    element("speech-differences").textContent = [
+      state.missing.length ? `Missing: ${state.missing.join(" ")}` : "",
+      state.unexpected.length ? `Unexpected: ${state.unexpected.join(" ")}` : "",
+    ].filter(Boolean).join(" / ");
+    element("speech-verification").setAttribute?.("data-state", state.status);
+    if (state.status === "verified" && conversation && lines[line]?.requiresSpeech) {
+      // The committed phrase unlocks the farmer immediately; no confirmation turn.
+      line++;
+      if (line >= lines.length) close();
+      else showLine();
+    }
+  } });
   function toggleObjectives() {
     objectivesOpen = !objectivesOpen;
     element("mission-panel").className = `mission-panel${objectivesOpen ? " is-open" : ""}`;
@@ -62,21 +99,37 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
     element("mission-water").hidden = !mission.waterKnown;
     if (mission.waterKnown) element("mission-water").textContent = `Ares Water Colony · X ${mission.coordinates.x}, Z ${mission.coordinates.z} · local survey grid`;
     element("mission-apollo").textContent = mission.apolloMessage;
+    if (mission.apolloMessage !== lastMissionMessage) {
+      lastMissionMessage = mission.apolloMessage;
+      onApolloMessage?.(mission.apolloMessage);
+    }
   }
   function progress(changed) { if (changed) onProgress?.(); }
   function close() {
+    dubbing.stop();
+    speech.reset("");
     if (conversation) conversation.talking = false;
     conversation = null;
     channel.end(conversationOwner);
     dialogue.hidden = true;
   }
   function showLine() {
+    dubbing.stop();
     const entry = lines[line];
+    speech.reset(entry.requiresSpeech ? entry.text : "");
+    element("speech-verification").hidden = !entry.requiresSpeech;
+    element("colony-dialogue-hint").textContent = entry.requiresSpeech
+      ? "Speak the complete line before continuing. Walk away to leave."
+      : "E - continue / Walk away to leave";
     dialogue.hidden = false;
     element("colony-speaker").textContent = entry.speaker;
+    dialogue.classList?.toggle("apollo-dialogue", entry.speaker.startsWith("Apollo"));
     element("colony-dialogue-text").textContent = entry.text;
+    element("colony-dialogue-text").setAttribute?.("aria-live", entry.requiresSpeech ? "off" : "polite");
+    if (entry.requiresSpeech) renderSpeechWords(element("colony-dialogue-text"), speech.state);
     if (entry.effect === "growth") progress(mission.learnGrowth());
     if (entry.effect === "water") progress(mission.learnWater(colony.site));
+    if (entry.dub) void dubbing.start(entry, entry.voiceSpeaker ?? (entry.speaker.startsWith("Apollo") ? "Apollo" : conversation.profile.name));
   }
   function baseInReach(player) {
     const target = getBaseTarget();
@@ -84,9 +137,14 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
       && Math.abs(player.position.y - getFootOffset() - target.y) <= 0.6;
   }
   return {
-    destroy() { close(); root.remove(); },
+    destroy() { close(); speech.destroy(); dubbing.destroy(); root.remove(); },
     refresh: renderMission,
-    setVisible(visible) { root.hidden = !visible; },
+    setVisible(nextVisible) {
+      if (visible && !nextVisible) speech.cancel();
+      dubbing.setPaused(!nextVisible);
+      visible = nextVisible;
+      root.hidden = !nextVisible;
+    },
     update(player, keyboard, cameraYaw = 0) {
       if (keyboard?.consumeJustPressed("KeyQ")) toggleObjectives();
       const returning = mission.phase === "return";
@@ -105,8 +163,14 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
       if (conversation && (!conversation.visual.visible
         || Math.hypot(player.position.x - conversation.visual.position.x, player.position.z - conversation.visual.position.z) > 4)) close();
       const blocked = channel.isBlocked(conversationOwner);
+      if (keyboard?.consumeJustPressed("KeyV") && !blocked && !dubbing.busy && conversation && lines[line]?.requiresSpeech) {
+        if (["connecting", "listening"].includes(speech.state.status)) speech.cancel();
+        else void speech.start();
+      }
       if (keyboard?.consumeJustPressed("KeyE") && !blocked) {
         if (conversation) {
+          if (dubbing.busy) return;
+          if (lines[line]?.requiresSpeech && speech.state.status !== "verified") return;
           line++;
           if (line >= lines.length) close();
           else showLine();

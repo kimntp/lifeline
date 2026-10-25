@@ -2,17 +2,23 @@ import { createDialogueSession, dialogueSession } from "./dialogue-session.js";
 
 export function createNarrationController(channel = createDialogueSession()) {
   const narration = new Set();
+  const metadata = new Map();
+  const ownerOf = audio => metadata.get(audio)?.owner ?? audio;
+  const release = audio => { if (!metadata.get(audio)?.holdChannel) channel.end(ownerOf(audio)); };
   const resumeAfterPause = new Set();
   let gamePaused = true;
   let muted = false;
   return {
-    register(audio) {
+    register(audio, { owner = audio, holdChannel = false, animateCompanion = true } = {}) {
       if (narration.has(audio)) return audio;
       narration.add(audio);
       audio.muted = muted;
+      const handlers = [];
+      metadata.set(audio, { owner, holdChannel, animateCompanion, handlers });
+      const listen = (event, fn) => { audio.addEventListener(event, fn); handlers.push([event, fn]); };
       // Catch playback that starts while a pause or menu transition is pending.
-      audio.addEventListener("play", () => {
-        if (!channel.begin(audio)) {
+      listen("play", () => {
+        if (!channel.begin(ownerOf(audio))) {
           audio.pause();
           return;
         }
@@ -21,26 +27,34 @@ export function createNarrationController(channel = createDialogueSession()) {
           audio.pause();
         }
       });
-      audio.addEventListener("pause", () => {
-        if (!gamePaused && !resumeAfterPause.has(audio)) channel.end(audio);
+      listen("pause", () => {
+        if (!gamePaused && !resumeAfterPause.has(audio)) release(audio);
       });
       for (const event of ["ended", "error", "emptied"]) {
-        audio.addEventListener(event, () => {
+        listen(event, () => {
           resumeAfterPause.delete(audio);
-          channel.end(audio);
+          release(audio);
         });
       }
       return audio;
     },
+    unregister(audio) {
+      resumeAfterPause.delete(audio);
+      for (const [event, fn] of metadata.get(audio)?.handlers ?? []) audio.removeEventListener(event, fn);
+      narration.delete(audio);
+      audio.pause();
+      release(audio);
+      metadata.delete(audio);
+    },
     async play(audio) {
-      if (gamePaused || !channel.begin(audio)) return false;
+      if (gamePaused || !channel.begin(ownerOf(audio))) return false;
       try {
         await audio.play();
         return true;
       } catch (error) {
         if (gamePaused && resumeAfterPause.has(audio) && error.name === "AbortError") return true;
         resumeAfterPause.delete(audio);
-        channel.end(audio);
+        release(audio);
         throw error;
       }
     },
@@ -60,7 +74,7 @@ export function createNarrationController(channel = createDialogueSession()) {
           if (audio.ended) continue;
           audio.play().catch(error => {
             resumeAfterPause.delete(audio);
-            channel.end(audio);
+            release(audio);
             console.warn("Narration could not resume:", error);
           });
         }
@@ -73,7 +87,7 @@ export function createNarrationController(channel = createDialogueSession()) {
     get muted() { return muted; },
     isPlaying() {
       return !gamePaused && [...narration].some(audio =>
-        !audio.paused && !audio.ended && !audio.seeking && audio.readyState >= 3
+        metadata.get(audio)?.animateCompanion !== false && !audio.paused && !audio.ended && !audio.seeking && audio.readyState >= 3
       );
     },
   };
@@ -81,7 +95,8 @@ export function createNarrationController(channel = createDialogueSession()) {
 
 const controller = createNarrationController(dialogueSession);
 try { controller.setMuted(localStorage.getItem("lifeline:audio-muted") === "true"); } catch {}
-export const registerNarrationAudio = audio => controller.register(audio);
+export const registerNarrationAudio = (audio, options) => controller.register(audio, options);
+export const unregisterNarrationAudio = audio => controller.unregister(audio);
 export const playNarrationAudio = audio => controller.play(audio);
 export const isNarrationPlaying = () => controller.isPlaying();
 export const setNarrationPaused = paused => controller.setPaused(paused);

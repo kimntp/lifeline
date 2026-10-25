@@ -98,24 +98,24 @@ export class GardenMission {
 export function surveyDialogue(mission, profile, site) {
   const farmer = `${profile.name} — ${profile.role}`;
   if (!mission.explained) return [
-    { speaker: "You", text: "How are you able to grow tomatoes and wheat in this Mars environment?" },
-    { speaker: farmer, text: "Our abilities generate the conditions the roots need. We regenerate the soil, balance its nutrients, regulate a warm local climate, and hold moisture around the plants. We help the crops grow; we do not force them." },
-    { speaker: farmer, text: "Our growing fields are around 22 degrees, with 65 percent root-zone moisture. We restore about 96 percent of the soil's growing potential, and our crops grow about three times as fast. You have our permission to take a small soil sample and a cutting from each crop.", effect: "growth" },
-    { speaker: "Apollo — Field assistant", text: "Alien-reported readings logged. Survey objectives added: collect soil, tomato, and wheat samples, and ask the farmers about their water supply. Keep this visit peaceful." },
+    { speaker: "You", requiresSpeech: true, text: "How are you able to grow tomatoes and wheat in this Mars environment?" },
+    { speaker: farmer, dub: true, text: "Our abilities generate the conditions the roots need. We regenerate the soil, balance its nutrients, regulate a warm local climate, and hold moisture around the plants. We help the crops grow; we do not force them." },
+    { speaker: farmer, dub: true, text: "Our growing fields are around 22 degrees, with 65 percent root-zone moisture. We restore about 96 percent of the soil's growing potential, and our crops grow about three times as fast. You have our permission to take a small soil sample and a cutting from each crop.", effect: "growth" },
+    { dub: true, voiceSpeaker: "Apollo", speaker: "Apollo — Field assistant", text: "Alien-reported readings logged. Survey objectives added: collect soil, tomato, and wheat samples, and ask the farmers about their water supply. Keep this visit peaceful." },
   ];
   if (!mission.waterKnown) {
     const coordinates = mission.waterDestination(site);
     return [
-      { speaker: "You", text: "How do you make enough water for your crops here?" },
-      { speaker: farmer, text: `We conserve water with our abilities, but we do not make it. Another colony supplies it in exchange for crops: Ares Water Colony. Here are their local survey coordinates: X ${coordinates.x}, Z ${coordinates.z}.`, effect: "water" },
-      { speaker: "Apollo — Field assistant", text: Object.values(mission.samples).every(Boolean)
+      { speaker: "You", requiresSpeech: true, text: "How do you make enough water for your crops here?" },
+      { speaker: farmer, dub: true, text: `We conserve water with our abilities, but we do not make it. Another colony supplies it in exchange for crops: Ares Water Colony. Here are their local survey coordinates: X ${coordinates.x}, Z ${coordinates.z}.`, effect: "water" },
+      { dub: true, voiceSpeaker: "Apollo", speaker: "Apollo — Field assistant", text: Object.values(mission.samples).every(Boolean)
         ? "Coordinates received. Report back to base first. We need to put down the soil and crop samples for analysis before visiting the water colony."
         : "Coordinates received. Collect the remaining soil and crop samples, then report back to base first to deposit them. We will visit the water colony afterward." },
     ];
   }
   return [
-    { speaker: farmer, text: "You are welcome in our garden. We will keep tending the crops while you finish your survey." },
-    { speaker: farmer, text: "The water colony's coordinates are in your log. We trade our harvest for their water, and neither colony could thrive alone." },
+    { speaker: farmer, dub: true, text: "You are welcome in our garden. We will keep tending the crops while you finish your survey." },
+    { speaker: farmer, dub: true, text: "The water colony's coordinates are in your log. We trade our harvest for their water, and neither colony could thrive alone." },
   ];
 }
 

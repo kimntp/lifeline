@@ -1,5 +1,7 @@
 import { buildScriptCues, progressiveCaptionAtTime } from "./caption-timing.mjs";
 
+const activeCaptions = new WeakMap();
+
 export function attachNarrationCaptions(audio, url) {
   let box = document.getElementById("narration-captions");
   if (!box) {
@@ -19,11 +21,16 @@ export function attachNarrationCaptions(audio, url) {
   }
   const speaker = document.getElementById("narration-speaker");
   const line = document.getElementById("narration-line");
+  const owner = {};
+  activeCaptions.set(box, owner);
+  const listeners = [];
+  const listen = (event, callback) => { audio.addEventListener(event, callback); listeners.push([event, callback]); };
   let script = "";
   let cues = [];
   let frame = null;
   let started = false;
   const update = () => {
+    if (activeCaptions.get(box) !== owner) return;
     const text = started && !audio.ended ? progressiveCaptionAtTime(cues, audio.currentTime) : "";
     if (line.textContent !== text) line.textContent = text;
     box.hidden = !text;
@@ -33,17 +40,17 @@ export function attachNarrationCaptions(audio, url) {
     update();
     if (!audio.paused && !audio.ended) frame = requestAnimationFrame(tick);
   };
-  audio.addEventListener("playing", () => {
+  listen("playing", () => {
     started = true;
     if (frame === null) tick();
   });
-  audio.addEventListener("pause", () => {
+  listen("pause", () => {
     cancelAnimationFrame(frame);
     frame = null;
     update();
   });
   for (const event of ["timeupdate", "seeked", "ended", "emptied", "error"]) {
-    audio.addEventListener(event, () => {
+    listen(event, () => {
       if (["ended", "emptied", "error"].includes(event)) started = false;
       update();
     });
@@ -52,11 +59,14 @@ export function attachNarrationCaptions(audio, url) {
     if (script) cues = buildScriptCues(script, audio.duration);
     update();
   };
-  audio.addEventListener("loadedmetadata", refreshTiming);
-  audio.addEventListener("durationchange", refreshTiming);
-  fetch(url).then(async (response) => {
+  listen("loadedmetadata", refreshTiming);
+  listen("durationchange", refreshTiming);
+  const load = typeof url === "object" ? Promise.resolve(url) : fetch(url).then(async response => {
     if (!response.ok) throw new Error(`Caption request failed (${response.status})`);
-    const data = await response.json();
+    return response.json();
+  });
+  load.then((data) => {
+    if (activeCaptions.get(box) !== owner) return;
     speaker.textContent = data.speaker || "Apollo";
     if (Array.isArray(data.cues) && data.cues.length) {
       if (!data.cues.every((cue, i) =>
@@ -71,6 +81,12 @@ export function attachNarrationCaptions(audio, url) {
     } else throw new Error("Caption text is missing");
     update();
   }).catch((error) => {
-    console.warn("Intro captions unavailable.", error);
+    console.warn("Narration captions unavailable.", error);
   });
+  return () => {
+    cancelAnimationFrame(frame);
+    for (const [event, callback] of listeners) audio.removeEventListener(event, callback);
+    if (activeCaptions.get(box) === owner) { activeCaptions.delete(box); box.hidden = true; }
+  };
+
 }

@@ -1,3 +1,4 @@
+import { verifiedSpeechFactory, silentDubbingFactory } from "./helpers/verified-speech.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
@@ -127,8 +128,8 @@ test("E shares peaceful growing-condition dialogue and closes when walking away"
     worker.visual.position.set(colony.site.x, colony.heightAt(colony.site.x, colony.site.z - 1), colony.site.z - 1);
     const player = { position: worker.visual.position.clone() };
     let pressed = false;
-    const keyboard = { consumeJustPressed(code) { if (code === "KeyQ") return false; assert.equal(code, "KeyE"); const value = pressed; pressed = false; return value; } };
-    const interaction = createColonyInteraction(colony);
+    const keyboard = { consumeJustPressed(code) { if (code === "KeyQ" || code === "KeyV") return false; assert.equal(code, "KeyE"); const value = pressed; pressed = false; return value; } };
+    const interaction = createColonyInteraction(colony, { dubbingFactory: silentDubbingFactory, speechFactory: verifiedSpeechFactory });
     interaction.setVisible(true);
     interaction.update(player, keyboard);
     assert.ok(elements.get("#colony-talk-prompt").textContent.includes(worker.profile.name));

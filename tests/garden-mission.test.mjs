@@ -1,3 +1,4 @@
+import { verifiedSpeechFactory, silentDubbingFactory } from "./helpers/verified-speech.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
@@ -116,9 +117,10 @@ test("E completes the entire peaceful survey, then deposits only at the base sta
     const samples = [];
     const keyboard = { consumeJustPressed(code) {
       if (code === "KeyQ") { const value = qPressed; qPressed = false; return value; }
+      if (code !== "KeyE") return false;
       const value = pressed; pressed = false; return value;
     } };
-    const interaction = createColonyInteraction(colony, { mission, getFootOffset: () => 0.4,
+    const interaction = createColonyInteraction(colony, { dubbingFactory: silentDubbingFactory, speechFactory: verifiedSpeechFactory, mission, getFootOffset: () => 0.4,
       getBaseTarget: () => new THREE.Vector3(0, 1, 0),
       onProgress: () => { saved = mission.serialize(); }, onSample: type => samples.push(type),
       onDeposit: () => { if (mission.beginDeposit()) deposits++; } });
