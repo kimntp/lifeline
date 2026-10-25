@@ -173,3 +173,15 @@ test("Apollo timed audio passes provider cues to the caption view", async () => 
   assert.deepEqual(captured.cues, cues);
   f.dub.destroy();
 });
+
+
+test("player lines and speech challenges never request or play dubbing", async () => {
+  let requests = 0;
+  const f = fixture({ request: async () => { requests++; return response(); } });
+  await f.dub.start({ speaker: "You", text: "I will help." }, "You");
+  await f.dub.start({ speaker: "Player", requiresSpeech: true, text: "Please share your methods." }, "Iri");
+  assert.equal(requests, 0);
+  assert.equal(f.clips.length, 0);
+  assert.equal(f.dub.busy, false);
+  f.dub.destroy();
+});

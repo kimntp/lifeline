@@ -1,3 +1,5 @@
+import { createPlayerSounds } from "./player-sounds.js";
+import { createBackgroundMusic, shouldUseUnsettlingMusic } from "./background-music.js";
 import { createMinimap } from "./minimap.js";
 import { ICE_ASSETS, buildIceBase } from "./ice-base.js";
 import { createPlayerVitals } from "./player-vitals.js";
@@ -29,6 +31,8 @@ import { createPlayerInventory, equipShovel } from "./player-inventory.js";
 import { LEVEL_LAYOUT } from "./level-layout.js";
 
 const session = new GameSession();
+const backgroundMusic = createBackgroundMusic();
+const playerSounds = createPlayerSounds();
 // Mission progress resets on reload; level locations are fixed in source.
 const gardenMission = new GardenMission();
 let iceModelsPromise = null;
@@ -182,6 +186,20 @@ function startPreview() {
       shared.mixer.update(delta);
     }
 
+    playerSounds.update({
+      active: !session.paused && !flags.missionTransition && !shared.iceAftermath && !shared.surveyMontage && _loopShared.cameraMode === "third-person",
+      position: shared.player?.position, grounded: shared.playerState.grounded,
+      sprinting: shared.keyboard?.sprint, swinging: shared.stateMachine?.oneShot, delta,
+    });
+    backgroundMusic.update(delta, {
+      active: session.started && !session.paused,
+      homeScreen: session.screen === "home" && !document.hidden,
+      unsettling: shouldUseUnsettlingMusic({
+        cutscene: Boolean(flags.missionTransition || shared.iceAftermath || shared.surveyMontage),
+        alienPhase: shared.iceEncounter?.phase,
+      }),
+      dialogue: dialogueSession.busy,
+    });
     shared.iceAftermath?.update(delta, !session.paused && !gameMenu.transitioning);
     shared.surveyMontage?.update(delta, !session.paused && !gameMenu.transitioning, shared.camera?.aspect);
 
@@ -406,6 +424,7 @@ async function loadGardenColony() {
       }
       if (!dialogueSession.busy && shared.player && gardenMission.completed && shared.selectedTool !== "shovel") {
         _loopShared.hit = true;
+        if (shared.selectedTool === "baton" && shared.playerState.grounded && !shared.stateMachine?.oneShot) playerSounds.swingBaton();
         const forward = new THREE.Vector3(-Math.sin(shared.look.yaw), 0, -Math.cos(shared.look.yaw));
         shared.player.rotation.y = Math.atan2(forward.x, forward.z);
         if (shared.selectedTool === "pickaxe") shared.iceEncounter?.mine(shared.player.position, forward, "pickaxe");
@@ -635,15 +654,6 @@ function step6_gravity() {
 }
 
 function step7_movement() {
-  function playIntroOnMovement(code, keys) {
-    const movementKeys = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"];
-    if (!movementKeys.includes(code) || !shared.player || !flags.movement || _loopShared.cameraMode !== "third-person") return;
-    if (document.pointerLockElement !== shared.renderer.domElement) return;
-    const forward = Number(Boolean(keys.KeyW || keys.ArrowUp)) - Number(Boolean(keys.KeyS || keys.ArrowDown));
-    const sideways = Number(Boolean(keys.KeyD || keys.ArrowRight)) - Number(Boolean(keys.KeyA || keys.ArrowLeft));
-    if (forward || sideways) apolloNarrator?.startIntro();
-  }
-
   // Captures held keys (continuous) + just-pressed keys (single-fire) + blur safety
   // Distinguishes held (keys map) from freshly pressed (justPressed Set) for jump/hit one-shots
   class KeyboardInput {
@@ -654,14 +664,13 @@ function step7_movement() {
         if (session.paused || flags.missionTransition) return;
         if (["Enter", "NumpadEnter"].includes(e.code)) {
           e.preventDefault();
-          if (!e.repeat && !apolloNarrator?.handleSkip()) shared.colonyInteraction?.handleSkip();
+          if (!e.repeat && !apolloNarrator?.handleSkip()) shared.colonyInteraction?.handleSkip() || shared.iceInteraction?.handleSkip();
           return;
         }
         if (e.code === "KeyE" && e.repeat) return;
         if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
         if (!this.keys[e.code]) this.justPressed.add(e.code);
         this.keys[e.code] = true;
-        playIntroOnMovement(e.code, this.keys);
       };
       this._ku = (e) => {
         this.keys[e.code] = false;
@@ -964,6 +973,9 @@ function pauseGame() {
   gameMenu.cancelTransition();
   session.pause();
   shared.colonyInteraction?.setVisible(false);
+  shared.iceInteraction?.setVisible(false);
+  shared.iceAftermath?.setVisible(false);
+  shared.surveyMontage?.setVisible(false);
   apolloNarrator?.setPaused(true);
   clearGameInput();
   if (document.pointerLockElement) document.exitPointerLock();
@@ -986,6 +998,9 @@ function navigateMenu(target) {
   if (shared.stateMachine?.preview) shared.stateMachine.setPreview("");
   clearGameInput();
   shared.colonyInteraction?.setVisible(false);
+  shared.iceInteraction?.setVisible(false);
+  shared.iceAftermath?.setVisible(false);
+  shared.surveyMontage?.setVisible(false);
   apolloNarrator?.setPaused(true);
   if (target === "home") session.home();
   else if (target === "back") session.back();
@@ -1169,6 +1184,7 @@ document.addEventListener("pointerlockchange", () => {
     const startGame = () => {
       if (!session.play()) throw new Error("The world is not ready to start.");
       gameMenu.render();
+      apolloNarrator?.startIntro();
       shared.renderer.domElement.focus();
     };
     if (session.screen === "home") {
@@ -1184,6 +1200,9 @@ document.addEventListener("pointerlockchange", () => {
     gameMenu.cancelTransition();
     session.pause();
     shared.colonyInteraction?.setVisible(false);
+  shared.iceInteraction?.setVisible(false);
+  shared.iceAftermath?.setVisible(false);
+  shared.surveyMontage?.setVisible(false);
     apolloNarrator?.setPaused(true);
     clearGameInput();
   }
@@ -1193,6 +1212,9 @@ document.addEventListener("pointerlockerror", () => {
   gameMenu.cancelTransition();
   session.pause();
   shared.colonyInteraction?.setVisible(false);
+  shared.iceInteraction?.setVisible(false);
+  shared.iceAftermath?.setVisible(false);
+  shared.surveyMontage?.setVisible(false);
   apolloNarrator?.setPaused(true);
   gameMenu.render();
   gameMenu.status("Mouse capture was declined. Click Start or Resume to try again.");

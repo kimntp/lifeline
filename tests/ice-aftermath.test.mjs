@@ -37,12 +37,12 @@ test("four guards march in, knock the astronaut down, and Apollo glitches into a
   const channel = createDialogueSession(), camera = new THREE.PerspectiveCamera();
   let cutscene, routingActors;
   try {
-    cutscene = createIceAftermath({ alien: { visual }, player: source, scene: world, camera, ground: { heightAt: () => 0 }, channel, onDirectContact: () => directContacts++ });
+    cutscene = createIceAftermath({ alien: { visual }, player: source, scene: world, camera, ground: { heightAt: () => 0 }, channel, dubbingFactory: () => ({ busy: false, start(entry) { spoken.push(entry.speechText ?? entry.text); }, stop() { cancelled++; }, destroy() {}, setPaused(value) { if (value) paused++; } }), onDirectContact: () => directContacts++ });
     assert.equal(channel.busy, true); assert.equal(cutscene.phase, "pain");
     let finished = false; cutscene.finished.then(() => { finished = true; });
     const pressE = () => listeners.get("keydown")({ code: "KeyE" });
     cutscene.update(0.1, true); cutscene.update(0.1, true);
-    assert.deepEqual(spoken, [ALIEN_PAIN_LINE]);
+    assert.equal(spoken.length, 1); assert.ok(spoken[0].includes(ALIEN_PAIN_LINE));
     pressE(); await Promise.resolve(); assert.equal(finished, false, "E cannot skip the guard sequence");
     cutscene.update(2, false); assert.equal(paused, 1); assert.equal(cutscene.phase, "pain");
     cutscene.update(3, true); assert.equal(cutscene.phase, "march");
@@ -68,6 +68,11 @@ test("four guards march in, knock the astronaut down, and Apollo glitches into a
     assert.match(elements.get("#aftermath-link").textContent, /DIRECT ALIEN CHANNEL/);
     assert.ok(DIRECT_ALIEN_DIALOGUE.some(entry => /Earth/.test(entry.text) && /forced to work/.test(entry.text)));
     for (let i = 0; i < DIRECT_ALIEN_DIALOGUE.length; i++) { cutscene.update(0.4, true); pressE(); }
+    for (const entry of DIRECT_ALIEN_DIALOGUE.filter(entry => entry.voiceSpeaker)) assert.ok(spoken.includes(entry.speechText ?? entry.text), entry.speaker);
+    assert.ok(spoken.includes("Step away from the worker."));
+    assert.ok(spoken.includes("M-mission... tra-translation..."));
+    assert.ok(!spoken.some(text => text.includes("The baton hits")));
+    for (const entry of DIRECT_ALIEN_DIALOGUE.filter(entry => entry.speaker === "You")) assert.ok(!spoken.includes(entry.text));
     await cutscene.finished; assert.equal(finished, true); assert.equal(directContacts, 1);
     cutscene.dispose(); cutscene.dispose();
     assert.equal(channel.busy, false); assert.equal(removed, true); assert.equal(classes.size, 0);

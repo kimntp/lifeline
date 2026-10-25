@@ -1,3 +1,5 @@
+import { SURVEY_NARRATION } from "../src/survey-dialogue.mjs";
+import { STORY_DIALOGUE } from "../src/ice-dialogue.mjs";
 import { FARMERS } from "../src/farmer-profiles.mjs";
 import { buildAlignedCaptionCues } from "../src/caption-timing.mjs";
 import { APOLLO_DIALOGUE } from "../src/apollo-dialogue.mjs";
@@ -13,6 +15,14 @@ export const FARMER_VOICES = Object.fromEntries(FARMERS.map(farmer => [farmer.na
 
 // Every Apollo utterance uses this voice, including the intro and verification feedback.
 export const APOLLO_VOICE = "onwK4e9ZLuTAKqWW03F9"; // Daniel
+
+export const STORY_VOICES = {
+  Apollo: APOLLO_VOICE,
+  Narrator: "JBFqnCBsd6RMkjVDRZzb", // George, whispered cinematic narration
+  "Gray colonist": "JBFqnCBsd6RMkjVDRZzb", // George, including the downed alien
+  "Company guard": "cjVigY5qzO86Huf0OWal", // Eric
+};
+const storyReply = body => [...STORY_DIALOGUE, ...SURVEY_NARRATION].find(entry => entry.voiceSpeaker === body?.farmer && entry.text === body?.text);
 
 function apolloScript() {
   const messages = new Set(Object.values(APOLLO_DIALOGUE));
@@ -47,6 +57,7 @@ function apolloScript() {
 }
 const APOLLO_SCRIPT = apolloScript();
 export function isAllowedDialogueReply(body) {
+  if (storyReply(body)) return true;
   if (body?.farmer === "Apollo") return typeof body.text === "string" && APOLLO_SCRIPT.has(body.text);
   return isAllowedFarmerReply(body);
 }
@@ -90,10 +101,12 @@ export function createAlienVoiceHandler({ client = new ElevenLabsClient(), now =
       body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       if (!body || !isAllowedDialogueReply(body)) return send(400, "Choose a scripted dialogue reply.");
     } catch { return send(400, "Invalid voice request."); }
-    const voice = body.farmer === "Apollo" ? APOLLO_VOICE : FARMER_VOICES[body.farmer];
-    const model = body.farmer === "Apollo" ? "eleven_v4" : "eleven_flash_v2_5";
-    const timed = body.farmer === "Apollo" && body.includeTimestamps === true;
-    const key = `${model}:${voice}:${timed}:${body.text}`;
+    const scripted = storyReply(body);
+    const spokenText = scripted?.speechText ?? body.text;
+    const voice = scripted ? STORY_VOICES[scripted.voiceSpeaker] : body.farmer === "Apollo" ? APOLLO_VOICE : FARMER_VOICES[body.farmer];
+    const model = (body.farmer === "Apollo" || scripted?.emotional) ? "eleven_v4" : "eleven_flash_v2_5";
+    const timed = body.includeTimestamps === true;
+    const key = `${model}:${voice}:${timed}:${spokenText}`;
     try {
       if (!cache.has(key) && !pending.has(key)) {
         const time = now(), ip = req.socket.remoteAddress || "local";
@@ -103,8 +116,8 @@ export function createAlienVoiceHandler({ client = new ElevenLabsClient(), now =
         entry.count++; requests.set(ip, entry);
         const generated = (async () => {
           const options = {
-            text: body.text, modelId: model, outputFormat: "mp3_44100_128",
-            voiceSettings: { stability: body.farmer === "Apollo" ? 0.5 : 0.55, similarityBoost: 0.75 },
+            text: spokenText, modelId: model, outputFormat: "mp3_44100_128",
+            voiceSettings: { stability: scripted?.emotional ? 0.35 : body.farmer === "Apollo" ? 0.5 : 0.55, similarityBoost: 0.75 },
           };
           const requestOptions = { timeoutInSeconds: 45, maxRetries: 0 };
           let buffer;

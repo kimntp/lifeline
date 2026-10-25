@@ -2,9 +2,9 @@ import { buildScriptCues, progressiveCaptionAtTime, groupCaptionPages } from "./
 
 const activeCaptions = new WeakMap();
 
-export function attachNarrationCaptions(audio, url) {
+export function attachNarrationCaptions(audio, url, target = null) {
   audio ??= Object.assign(new EventTarget(), { currentTime: 0, duration: NaN, paused: true, ended: false });
-  let box = document.getElementById("narration-captions");
+  let box = target?.box ?? document.getElementById("narration-captions");
   if (!box) {
     box = document.createElement("div");
     box.id = "narration-captions";
@@ -20,8 +20,8 @@ export function attachNarrationCaptions(audio, url) {
     box.append(speaker, line);
     document.body.appendChild(box);
   }
-  const speaker = document.getElementById("narration-speaker");
-  const line = document.getElementById("narration-line");
+  const speaker = target?.speaker ?? document.getElementById("narration-speaker");
+  const line = target?.line ?? document.getElementById("narration-line");
   const owner = {};
   activeCaptions.set(box, owner);
   const listeners = [];
@@ -29,12 +29,14 @@ export function attachNarrationCaptions(audio, url) {
   let script = "";
   let cues = [];
   let frame = null;
-  let started = false, fullText = "", forced = false, scriptTimingLocked = false;
+  let started = false, fullText = typeof url === "object" ? url.text ?? "" : "", forced = false, scriptTimingLocked = false;
   const update = () => {
     if (activeCaptions.get(box) !== owner) return;
-    const text = forced ? fullText : started && !audio.ended ? progressiveCaptionAtTime(cues, audio.currentTime) : "";
+    const previousCue = cues.findLast(cue => cue.start <= audio.currentTime);
+    const text = forced ? fullText : started && !audio.ended
+      ? progressiveCaptionAtTime(cues, audio.currentTime) || previousCue?.text || "" : "";
     if (line.textContent !== text) line.textContent = text;
-    box.hidden = !text;
+    if (!target) box.hidden = !text;
   };
   const tick = () => {
     frame = null;
@@ -89,9 +91,10 @@ export function attachNarrationCaptions(audio, url) {
     console.warn("Narration captions unavailable.", error);
   });
   const detach = () => {
+    if (target) { forced = true; update(); }
     cancelAnimationFrame(frame);
     for (const [event, callback] of listeners) audio.removeEventListener(event, callback);
-    if (activeCaptions.get(box) === owner) { activeCaptions.delete(box); box.hidden = true; }
+    if (activeCaptions.get(box) === owner) { activeCaptions.delete(box); if (!target) box.hidden = true; }
   };
   detach.complete = () => {
     forced = true;
@@ -101,4 +104,10 @@ export function attachNarrationCaptions(audio, url) {
   };
   return detach;
 
+}
+
+// Embed the same audio-timed renderer in conversations and cinematic dialogue.
+export function attachDialogueText(audio, entry, { box, speaker, line }) {
+  return attachNarrationCaptions(audio, { speaker: entry.speaker, text: entry.text,
+    ...(entry.cues?.length && !entry.text.startsWith("[") ? { cues: entry.cues } : {}) }, { box, speaker, line });
 }

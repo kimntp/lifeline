@@ -40,6 +40,7 @@ test("world startup wires a fresh mission, base sample station and deposit callb
     FBXLoader: AssetLoader, ICE_ASSETS, buildIceBase, resolveBaseCollision, resolvePlatformCollision, dialogueSession: { busy: false },
     createColonyInteraction(_colony, options) { interactionOptions = options; return {}; },
     createGameMenu: () => menuHarness,
+    createBackgroundMusic: () => ({ update: noop }), createPlayerSounds: () => ({ update: noop, swingBaton: noop }),
     createSurveyMontage() {
       assert.equal(api.getMission().completed, true, "Sample deposit commits before the montage");
       return { finished: montageDone, dispose() { montageDisposed = true; } };

@@ -1,3 +1,4 @@
+import { silentDubbingFactory } from "./helpers/verified-speech.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -23,6 +24,7 @@ test("Colony 1 guards retain correct proportions and visibly strike an alien in 
   globalThis.document = { createElement: () => root, body: { appendChild() {} } };
   globalThis.window = { addEventListener: (name, fn) => events.set(name, fn), removeEventListener: name => events.delete(name) };
   let montage;
+  const spoken = [];
   try {
     const player = asset("Astronauta");
     player.scale.multiplyScalar(1.7 / new THREE.Box3().setFromObject(player, true).getSize(new THREE.Vector3()).y);
@@ -30,7 +32,7 @@ test("Colony 1 guards retain correct proportions and visibly strike an alien in 
     applyAstronautSuit(player, "white");
     const shovel = equipShovel(player); shovel.visible = true;
     const models = { green: prepareAlienModel(asset("Alien_Low_Green")) };
-    montage = createSurveyMontage({ player, alienModels: models, cropModel: asset("Wheat Crop"), tomatoModel: asset("Tomato Plant"), domeModel: asset("hab_dome"), aspect: 16 / 9 });
+    montage = createSurveyMontage({ dubbingFactory: () => ({ ...silentDubbingFactory(), start(entry, voice) { spoken.push({ entry, voice }); } }), player, alienModels: models, cropModel: asset("Wheat Crop"), tomatoModel: asset("Tomato Plant"), domeModel: asset("hab_dome"), aspect: 16 / 9 });
     assert.ok(montage.camera.position.length() > 1, "The camera is staged before the reveal fade");
     assert.equal(montage.shot.action, "forcedFarming");
     assert.equal(SURVEY_SHOTS[0].duration, 7);
@@ -75,12 +77,18 @@ test("Colony 1 guards retain correct proportions and visibly strike an alien in 
     assert.ok(guards.every(guard => guard.visible && guard.getObjectByName("TaserBaton").visible));
     montage.update(1.5, true); await montage.finished;
     assert.equal(SURVEY_SHOTS.reduce((sum, shot) => sum + shot.duration, 0), 16);
+    assert.deepEqual(spoken.map(item => item.entry.text), SURVEY_SHOTS.map(shot => shot.caption));
+    assert.ok(spoken.every(item => item.voice === "Narrator"));
     montage.dispose();
     assert.deepEqual(player.position, position); assert.equal(shovel.visible, true);
     assert.equal(sourceDisposed, false, "Shared source geometry remains usable");
     assert.equal(removed, true); assert.equal(events.size, 0);
     montage.dispose();
-    montage = createSurveyMontage({ player, alienModels: models, reducedMotion: true });
+    let voiceBusy = false, completions = 0;
+    montage = createSurveyMontage({ dubbingFactory: () => ({
+      get busy() { return voiceBusy; }, start() { voiceBusy = true; }, complete() { voiceBusy = false; completions++; },
+      stop() { voiceBusy = false; }, destroy() {}, setPaused() {},
+    }), player, alienModels: models, reducedMotion: true });
     const cameraPosition = montage.camera.position.clone();
     montage.update(2, false);
     let skipped = false; montage.finished.then(() => { skipped = true; });
@@ -88,6 +96,8 @@ test("Colony 1 guards retain correct proportions and visibly strike an alien in 
     assert.equal(skipped, false, "Paused or covered montage cannot be skipped accidentally");
     montage.update(2, true);
     assert.deepEqual(montage.camera.position, cameraPosition, "Reduced motion disables camera drift");
+    events.get("keydown")({ code: "Enter" }); await Promise.resolve();
+    assert.equal(completions, 1); assert.equal(skipped, false, "First Enter completes only the voice");
     events.get("keydown")({ code: "Enter" }); await montage.finished;
     assert.equal(skipped, true);
     montage.dispose();

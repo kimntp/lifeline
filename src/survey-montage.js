@@ -4,16 +4,13 @@ import { applyAstronautSuit } from "./astronaut-suit.js";
 import { createAlienFarmer } from "./alien-farmers.js";
 import { equipTaserBaton } from "./ice-encounter.js";
 
-export const SURVEY_SHOTS = Object.freeze([
-  { region: "GALE CRATER · GARDEN COLONY", action: "forcedFarming", duration: 7,
-    caption: "Under armed watch, the farmers are forced back to the fields." },
-  { region: "GALE CRATER · GARDEN COLONY", action: "batonStrike", duration: 4,
-    caption: "A guard strikes a farmer who stops working." },
-  { region: "GALE CRATER · GARDEN COLONY", action: "collapse", duration: 5,
-    caption: "Exhausted workers collapse. The guards keep watch." },
-]);
+import { SURVEY_SHOTS, SURVEY_NARRATION } from "./survey-dialogue.mjs";
+import { createDialogueDubbing } from "./alien-dubbing.js";
+import { attachDialogueText } from "./narration-captions.js";
+import { dialogueSession } from "./dialogue-session.js";
+export { SURVEY_SHOTS } from "./survey-dialogue.mjs";
 
-export function createSurveyMontage({ player, alienModels, cropModel, tomatoModel, domeModel, aspect = 1, reducedMotion = false }) {
+export function createSurveyMontage({ player, alienModels, cropModel, tomatoModel, domeModel, aspect = 1, reducedMotion = false, channel = dialogueSession, dubbingFactory = createDialogueDubbing }) {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x211317);
   scene.fog = new THREE.Fog(0x211317, 35, 110);
   const camera = new THREE.PerspectiveCamera(46, aspect, 0.1, 200);
@@ -77,19 +74,34 @@ export function createSurveyMontage({ player, alienModels, cropModel, tomatoMode
   const root = document.createElement("section"); root.className = "survey-montage";
   root.setAttribute("aria-label", "Garden colony forced labor cutscene");
   root.innerHTML = `<div class="montage-letterbox montage-top"></div><p class="montage-region"></p>
-    <div class="montage-letterbox montage-bottom"><p class="montage-caption" aria-live="polite"></p>
-    <button type="button">Enter — Skip cutscene</button></div><div class="montage-dissolve" aria-hidden="true"></div>`;
+    <div class="dialogue-box montage-bottom"><p class="colony-eyebrow">Narrator</p><p class="montage-caption" aria-live="polite"></p>
+    <button class="colony-dialogue-hint" type="button">Enter — Skip cutscene</button></div><div class="montage-dissolve" aria-hidden="true"></div>`;
   document.body.appendChild(root);
   const region = root.querySelector(".montage-region"), caption = root.querySelector(".montage-caption"), dissolve = root.querySelector(".montage-dissolve");
+  const owner = {};
+  if (!channel.begin(owner)) { root.remove(); throw new Error("The montage needs the dialogue channel"); }
+  const speaker = root.querySelector(".colony-eyebrow"), box = root.querySelector(".montage-bottom");
+  const dubbing = dubbingFactory({ owner,
+    onAudio: (audio, entry) => attachDialogueText(audio, entry, { box, speaker, line: caption }),
+    onChange: ({ status }) => { if (["error", "finished", "completed"].includes(status)) caption.textContent = SURVEY_SHOTS[shotIndex].caption; },
+  });
+  let pendingSpeech = null;
   let resolve, shotIndex = 0, shotTime = 0, elapsed = 0, disposed = false, complete = false;
   const finished = new Promise(done => { resolve = done; });
-  function finish() { if (!complete) { complete = true; resolve(); } }
-  function skip() { if (!root.hidden && elapsed > 1) finish(); }
-  function key(event) { if (event.code === "Enter" && !event.repeat) skip(); }
+  function finish() { if (!complete) { complete = true; pendingSpeech = null; dubbing.stop(); channel.end(owner); resolve(); } }
+  function skip() {
+    if (root.hidden || disposed || complete) return;
+    if (pendingSpeech) { caption.textContent = pendingSpeech.text; pendingSpeech = null; }
+    else if (dubbing.busy) dubbing.complete();
+    else if (elapsed > 1) finish();
+  }
+  function key(event) { if (["Enter", "NumpadEnter"].includes(event.code) && !event.repeat) skip(); }
   window.addEventListener("keydown", key); root.querySelector("button").addEventListener("click", skip);
   function title() {
     const shot = SURVEY_SHOTS[shotIndex];
-    region.textContent = shot.region; caption.textContent = shot.caption;
+    dubbing.stop();
+    pendingSpeech = SURVEY_NARRATION[shotIndex];
+    region.textContent = shot.region; caption.textContent = "";
     for (const [i, alien] of aliens.entries()) {
       alien.position.set(workSpots[i][0], 0, workSpots[i][1]);
       alien.rotation.x = alien.rotation.z = 0;
@@ -108,15 +120,20 @@ export function createSurveyMontage({ player, alienModels, cropModel, tomatoMode
   title();
   const montage = {
     scene, camera, finished,
+    setVisible(visible) { root.hidden = !visible; dubbing.setPaused(!visible); },
     get shot() { return SURVEY_SHOTS[shotIndex]; },
     update(delta, visible, nextAspect = aspect) {
       root.hidden = !visible;
+      dubbing.setPaused(!visible);
       if (!visible || disposed || complete) return;
+      if (pendingSpeech) { const entry = pendingSpeech; pendingSpeech = null; void dubbing.start(entry, entry.voiceSpeaker); }
       elapsed += delta; shotTime += delta;
       while (shotTime >= SURVEY_SHOTS[shotIndex].duration) {
+        if (dubbing.busy) { shotTime = SURVEY_SHOTS[shotIndex].duration; break; }
         shotTime -= SURVEY_SHOTS[shotIndex].duration;
         if (shotIndex === SURVEY_SHOTS.length - 1) { finish(); return; }
         shotIndex++; title();
+        if (pendingSpeech) { const entry = pendingSpeech; pendingSpeech = null; void dubbing.start(entry, entry.voiceSpeaker); }
       }
       if (camera.aspect !== nextAspect) { camera.aspect = nextAspect; camera.updateProjectionMatrix(); }
       const collapse = SURVEY_SHOTS[shotIndex].action === "collapse";
@@ -154,10 +171,11 @@ export function createSurveyMontage({ player, alienModels, cropModel, tomatoMode
         : new THREE.Vector3(collapse ? 10 - drift : 14 - drift, collapse ? 5 : 10, collapse ? 12 : 18);
       camera.position.copy(focus).add(offset.multiplyScalar(Math.max(1, 1 / camera.aspect)));
       camera.lookAt(focus);
-      dissolve.style.opacity = String(Math.max(0, 1 - shotTime / 0.35, 1 - (SURVEY_SHOTS[shotIndex].duration - shotTime) / 0.35));
+      dissolve.style.opacity = String(Math.max(0, 1 - shotTime / 0.35, dubbing.busy ? 0 : 1 - (SURVEY_SHOTS[shotIndex].duration - shotTime) / 0.35));
     },
     dispose() {
       if (disposed) return; disposed = true;
+      pendingSpeech = null; dubbing.destroy(); channel.end(owner);
       window.removeEventListener("keydown", key); root.remove();
       for (const guard of guards) {
         guard.animator.mixer.stopAllAction(); guard.animator.mixer.uncacheRoot(guard.visual);

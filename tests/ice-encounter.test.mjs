@@ -1,3 +1,4 @@
+import { silentDubbingFactory } from "./helpers/verified-speech.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
@@ -93,7 +94,7 @@ test("downed alien dialogue unlocks Apollo's tasks without giving an exact trans
   globalThis.document = { createElement: () => root, body: { appendChild() {} } };
   try {
     let completed = 0;
-    const ui = createIceInteraction(encounter, { channel: createDialogueSession(), onComplete: () => completed++ });
+    const ui = createIceInteraction(encounter, { dubbingFactory: silentDubbingFactory, channel: createDialogueSession(), onComplete: () => completed++ });
     const player = { position: encounter.lastAlien.visual.position.clone() };
     let pressed = false;
     const keyboard = { consumeJustPressed(code) { if (code !== "KeyE") return false; const value = pressed; pressed = false; return value; } };
@@ -105,7 +106,7 @@ test("downed alien dialogue unlocks Apollo's tasks without giving an exact trans
     press();
     assert.equal(encounter.phase, "tasks");
     assert.equal(elements.get("#ice-speaker").textContent, "Apollo");
-    assert.match(elements.get("#ice-line").textContent, /Mine an ice core/);
+    assert.equal(elements.get("#ice-line").textContent, "", "Dubbed text waits for audio rather than appearing all at once");
     press(); assert.equal(ui.conversing, false);
     encounter.collect("ice", "pickaxe"); encounter.collect("crystal");
     assert.equal(completed, 0, "Partial sampling does not start the scene");
@@ -118,7 +119,7 @@ test("downed alien dialogue unlocks Apollo's tasks without giving an exact trans
     encounter.directContact = true;
     player.position.copy(encounter.lastAlien.visual.position);
     press(); press();
-    assert.match(elements.get("#ice-line").textContent, /Earth.*forced to work/);
+    assert.equal(elements.get("#ice-line").textContent, "", "Alien disclosures reveal with their voice");
     assert.doesNotMatch(elements.get("#ice-line").textContent, /Translation processed/);
     ui.destroy();
   } finally { globalThis.document = previousDocument; }
@@ -185,7 +186,7 @@ test("swinging during recognition releases dialogue ownership and registers a st
   try {
     const channel = createDialogueSession();
     let equipped = "baton";
-    const ui = createIceInteraction(encounter, { channel, getTool: () => equipped });
+    const ui = createIceInteraction(encounter, { dubbingFactory: silentDubbingFactory, channel, getTool: () => equipped });
     ui.update({ position: new THREE.Vector3() }, { consumeJustPressed: code => code === "KeyE" });
     assert.equal(channel.busy, true);
     assert.equal(encounter.phase, "recognition");

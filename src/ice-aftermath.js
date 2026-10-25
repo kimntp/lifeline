@@ -1,25 +1,17 @@
+import { attachDialogueText } from "./narration-captions.js";
 import * as THREE from "three";
-import { isNarrationMuted } from "./narration-audio.js";
+import { createDialogueDubbing } from "./alien-dubbing.js";
+import { DIRECT_ALIEN_DIALOGUE, AFTERMATH_DIALOGUE } from "./ice-dialogue.mjs";
+export { ALIEN_PAIN_LINE, DIRECT_ALIEN_DIALOGUE } from "./ice-dialogue.mjs";
 import { createAftermathActors } from "./aftermath-actors.js";
 
-export const ALIEN_PAIN_LINE = "Please... it hurts. We only wanted to protect our water.";
 export const ICE_AFTERMATH_STAGES = Object.freeze([
   { phase: "pain", duration: 3 }, { phase: "march", duration: 5 },
   { phase: "strike", duration: 2.2 }, { phase: "down", duration: 1.8 },
   { phase: "glitch", duration: 3 }, { phase: "dialogue", duration: Infinity },
 ]);
-export const DIRECT_ALIEN_DIALOGUE = Object.freeze([
-  { speaker: "You", text: "You were trying to warn me. What is the company doing here?" },
-  { speaker: "Downed gray alien", text: "They take our crops and our water to Earth. Our families are forced to work." },
-  { speaker: "You", text: "Apollo told me the samples would help everyone." },
-  { speaker: "Downed gray alien", text: "Your samples show them what to take next. If we refuse, their guards beat us. When we collapse, they replace us." },
-  { speaker: "Apollo · damaged link", text: "[Translation filter offline. Direct channel established.]" },
-  { speaker: "Downed gray alien", text: "You heard me before he changed my words. Now you know. Will you help us?" },
-  { speaker: "You", text: "I'll listen to you. Tell me what you need." },
-  { speaker: "Downed gray alien", text: "Stop sending them our resources. Help our people get out." },
-]);
 
-export function createIceAftermath({ alien, player, scene, camera, ground, obstacles = [], occluders = [], channel, reducedMotion = false, onDirectContact = () => {} }) {
+export function createIceAftermath({ alien, player, scene, camera, ground, obstacles = [], occluders = [], channel, reducedMotion = false, onDirectContact = () => {}, dubbingFactory = createDialogueDubbing }) {
   const owner = {};
   if (!channel.begin(owner)) throw new Error("The alien scene needs the dialogue channel");
   const originalPosition = alien.visual.position.clone(), originalRotation = alien.visual.quaternion.clone();
@@ -38,43 +30,52 @@ export function createIceAftermath({ alien, player, scene, camera, ground, obsta
   let actors;
   try { actors = createAftermathActors({ scene, player, alienPosition: originalPosition, ground, obstacles, viewDirection: shot.clone().sub(focus) }); }
   catch (error) { channel.end(owner); throw error; }
-  const root = document.createElement("section"); root.className = "dialogue-box ice-aftermath";
+  const root = document.createElement("section"); root.className = "dialogue-box colony-dialogue ice-aftermath";
   root.setAttribute("aria-label", "Guard attack and direct alien conversation");
   root.innerHTML = `<p class="colony-eyebrow" id="aftermath-speaker"></p><p id="aftermath-line" aria-live="polite"></p>
-    <p id="aftermath-link" class="aftermath-link" role="status"></p><button type="button">Sequence playing…</button>`;
+    <p id="aftermath-link" class="aftermath-link" role="status"></p><button class="colony-dialogue-hint" type="button">Sequence playing…</button>`;
   document.body.appendChild(root);
   const speaker = root.querySelector("#aftermath-speaker"), line = root.querySelector("#aftermath-line"), link = root.querySelector("#aftermath-link"), button = root.querySelector("button");
-  const speech = globalThis.speechSynthesis;
+  const dubbing = dubbingFactory({ owner,
+    onAudio: (audio, entry) => attachDialogueText(audio, entry, { box: root, speaker, line }),
+    onChange: ({ status }) => {
+      if (["finished", "error", "completed"].includes(status)) {
+        const entry = phase() === "dialogue" ? DIRECT_ALIEN_DIALOGUE[dialogueLine] : AFTERMATH_DIALOGUE[phase()];
+        line.textContent = entry.text;
+      }
+    },
+  });
   let resolve, phaseIndex = 0, phaseTime = 0, elapsed = 0, dialogueLine = 0, disposed = false, complete = false;
-  let speechActive = false, pendingSpeech = ALIEN_PAIN_LINE;
+  let pendingSpeech = null;
   const finished = new Promise(done => { resolve = done; });
   const phase = () => ICE_AFTERMATH_STAGES[phaseIndex].phase;
-  function stopSpeech() { if (speechActive) speech?.cancel(); speechActive = false; }
-  function setLine(who, text, voice = false) {
-    stopSpeech(); speaker.textContent = who; line.textContent = text; pendingSpeech = voice ? text : null;
-  }
+  function stopSpeech() { pendingSpeech = null; dubbing.stop(); }
   function showPhase() {
     const p = phase(); button.disabled = p !== "dialogue";
-    button.textContent = p === "dialogue" ? "E — Continue" : "Sequence playing…";
-    if (p === "pain") setLine("Downed gray alien · Unfiltered voice", ALIEN_PAIN_LINE, true);
-    if (p === "march") setLine("You", "Four company guards... They're coming this way.");
-    if (p === "strike") setLine("Company guard", "Step away from the worker.");
-    if (p === "down") setLine("You", "[The baton hits. You fall beside the injured alien.]");
-    if (p === "glitch") setLine("Apollo · signal corrupted", "M—mission... tra—translation... [LINK FAILURE]");
-    if (p === "dialogue") {
-      const entry = DIRECT_ALIEN_DIALOGUE[dialogueLine];
-      setLine(entry.speaker, entry.text, entry.speaker === "Downed gray alien");
-    }
+    button.textContent = p === "dialogue" ? "Enter / E - Continue | Enter - Skip voice" : "Sequence playing... | Enter - Skip voice";
+    stopSpeech();
+    const entry = p === "dialogue" ? DIRECT_ALIEN_DIALOGUE[dialogueLine] : AFTERMATH_DIALOGUE[p];
+    speaker.textContent = entry.speaker; line.textContent = entry.voiceSpeaker ? "" : entry.text;
+    root.classList?.toggle("apollo-dialogue", entry.speaker.startsWith("Apollo"));
+    pendingSpeech = entry.voiceSpeaker ? entry : null;
     link.textContent = ["glitch", "dialogue"].includes(p) ? p === "glitch"
       ? "APOLLO // TRANSLATION FILTER FAILURE" : "DIRECT ALIEN CHANNEL · APOLLO FILTER OFFLINE" : "";
   }
   function continueScene() {
-    if (root.hidden || disposed || complete || phase() !== "dialogue" || phaseTime < 0.35) return;
+    if (root.hidden || disposed || complete || phase() !== "dialogue" || phaseTime < 0.35 || dubbing.busy || pendingSpeech) return;
     dialogueLine++;
     if (dialogueLine >= DIRECT_ALIEN_DIALOGUE.length) { complete = true; stopSpeech(); resolve(); return; }
     phaseTime = 0; showPhase();
   }
-  function key(event) { if (event.code === "KeyE" && !event.repeat) continueScene(); }
+  function key(event) {
+    if (root.hidden || event.repeat) return;
+    if (["Enter", "NumpadEnter"].includes(event.code)) {
+      event.preventDefault();
+      if (pendingSpeech) { line.textContent = pendingSpeech.text; pendingSpeech = null; }
+      else if (dubbing.busy) dubbing.complete();
+      else continueScene();
+    } else if (event.code === "KeyE") continueScene();
+  }
   window.addEventListener("keydown", key); button.addEventListener("click", continueScene);
   showPhase();
   function frameCamera(p) {
@@ -103,21 +104,22 @@ export function createIceAftermath({ alien, player, scene, camera, ground, obsta
   actors.update("pain", 0, 0); frameCamera("pain"); root.hidden = true;
   return {
     finished, actors,
+    setVisible(visible) { root.hidden = !visible; dubbing.setPaused(!visible); },
     get phase() { return phase(); },
     get dialogueIndex() { return dialogueLine; },
     update(delta, visible) {
       root.hidden = !visible;
       document.body.classList.toggle("apollo-glitch", visible && phase() === "glitch" && !complete);
-      if (speechActive && speech) {
-        if (isNarrationMuted()) stopSpeech();
-        else if (!visible) speech.pause();
-        else if (speech.paused) speech.resume();
-      }
+      dubbing.setPaused(!visible);
       if (!visible || disposed || complete) return;
+      if (pendingSpeech) { const entry = pendingSpeech; pendingSpeech = null; void dubbing.start(entry, entry.voiceSpeaker); }
+      button.disabled = phase() !== "dialogue" || dubbing.busy;
       elapsed += delta; phaseTime += delta;
       while (phaseTime >= ICE_AFTERMATH_STAGES[phaseIndex].duration) {
+        if (dubbing.busy) { phaseTime = ICE_AFTERMATH_STAGES[phaseIndex].duration; break; }
         phaseTime -= ICE_AFTERMATH_STAGES[phaseIndex].duration;
         phaseIndex++; showPhase();
+        if (pendingSpeech) { const entry = pendingSpeech; pendingSpeech = null; void dubbing.start(entry, entry.voiceSpeaker); }
         if (phase() === "dialogue") onDirectContact();
       }
       document.body.classList.toggle("apollo-glitch", phase() === "glitch");
@@ -127,17 +129,11 @@ export function createIceAftermath({ alien, player, scene, camera, ground, obsta
         alien.visual.rotation.z += Math.sin(elapsed * 15) * 0.018;
         alien.visual.position.y += Math.sin(elapsed * 3) * 0.018;
       }
-      if (pendingSpeech) {
-        const text = pendingSpeech; pendingSpeech = null;
-        if (speech && globalThis.SpeechSynthesisUtterance && !isNarrationMuted()) {
-          const voice = new SpeechSynthesisUtterance(text); voice.rate = 0.7; voice.pitch = 0.65; voice.volume = 0.85;
-          try { speech.speak(voice); speechActive = true; } catch { /* Captions remain available. */ }
-        }
-      }
+
     },
     dispose() {
       if (disposed) return; disposed = true;
-      stopSpeech(); window.removeEventListener("keydown", key); document.body.classList.remove("apollo-glitch");
+      stopSpeech(); dubbing.destroy(); window.removeEventListener("keydown", key); document.body.classList.remove("apollo-glitch");
       actors.dispose(); alien.visual.position.copy(originalPosition); alien.visual.quaternion.copy(originalRotation);
       root.remove(); channel.end(owner); resolve();
     },

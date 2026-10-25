@@ -85,6 +85,7 @@ export function createNarrationController(channel = createDialogueSession()) {
       for (const audio of narration) audio.muted = muted;
     },
     get muted() { return muted; },
+    get paused() { return gamePaused; },
     isPlaying() {
       return !gamePaused && [...narration].some(audio =>
         metadata.get(audio)?.animateCompanion !== false && !audio.paused && !audio.ended && !audio.seeking && audio.readyState >= 3
@@ -99,10 +100,21 @@ export const registerNarrationAudio = (audio, options) => controller.register(au
 export const unregisterNarrationAudio = audio => controller.unregister(audio);
 export const playNarrationAudio = audio => controller.play(audio);
 export const isNarrationPlaying = () => controller.isPlaying();
-export const setNarrationPaused = paused => controller.setPaused(paused);
+const stateListeners = new Set();
+const publishState = () => {
+  const state = { paused: controller.paused, muted: controller.muted };
+  for (const listener of stateListeners) listener(state);
+};
+export function subscribeAudioState(listener) {
+  stateListeners.add(listener);
+  listener({ paused: controller.paused, muted: controller.muted });
+  return () => stateListeners.delete(listener);
+}
+export const setNarrationPaused = paused => { controller.setPaused(paused); publishState(); };
 export const isNarrationMuted = () => controller.muted;
 export function toggleNarrationMute() {
   controller.setMuted(!controller.muted);
+  publishState();
   try { localStorage.setItem("lifeline:audio-muted", String(controller.muted)); } catch {}
   return controller.muted;
 }

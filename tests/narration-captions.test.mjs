@@ -171,3 +171,30 @@ test("caption pages fill with several whole sentences without changing word timi
   assert.deepEqual(pages.flatMap(page => page.words), sentences.flatMap(sentence => sentence.words));
   assert.equal(sentences[0].text.startsWith("Sentence 0 explains"), true);
 });
+
+
+test("embedded dialogue reveals timed words, preserves its box, and Enter completion stops subsequent updates", async () => {
+  const before = { requestAnimationFrame: globalThis.requestAnimationFrame, cancelAnimationFrame: globalThis.cancelAnimationFrame };
+  globalThis.requestAnimationFrame = () => 1; globalThis.cancelAnimationFrame = () => {};
+  try {
+    const { attachDialogueText } = await import("../src/narration-captions.js");
+    const target = { box: { hidden: false }, speaker: { textContent: "" }, line: { textContent: "" } };
+    const audio = Object.assign(new EventTarget(), { currentTime: 0, duration: 3, paused: false, ended: false });
+    const detach = attachDialogueText(audio, { speaker: "Alien", text: "Help our people.", cues: [
+      { start: 0, end: 3, text: "Help our people.", words: [
+        { text: "Help", start: 0, end: .5 }, { text: "our", start: 1, end: 1.5 }, { text: "people.", start: 2, end: 2.5 },
+      ] },
+    ] }, target);
+    await Promise.resolve();
+    audio.dispatchEvent(new Event("playing")); assert.equal(target.line.textContent, "Help");
+    audio.currentTime = 1.1; audio.dispatchEvent(new Event("timeupdate")); assert.equal(target.line.textContent, "Help our");
+    audio.paused = true; audio.dispatchEvent(new Event("pause")); assert.equal(target.line.textContent, "Help our");
+    detach.complete(); assert.equal(target.line.textContent, "Help our people.");
+    audio.currentTime = 0; audio.dispatchEvent(new Event("timeupdate")); assert.equal(target.line.textContent, "Help our people.");
+    detach(); assert.equal(target.box.hidden, false);
+    const pending = attachDialogueText(null, { speaker: "Apollo", text: "Loading can be skipped." }, target);
+    pending.complete(); assert.equal(target.line.textContent, "Loading can be skipped.");
+    await Promise.resolve(); assert.equal(target.line.textContent, "Loading can be skipped.");
+    pending();
+  } finally { Object.assign(globalThis, before); }
+});

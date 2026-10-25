@@ -13,7 +13,7 @@ test("Colony 2 is absent until samples are deposited and Phase 2 starts", () => 
   const state = () => getMinimapState({ ...input, phase2: mission.completed });
   assert.deepEqual(state().markers.map(marker => marker.id), ["base", "colony1"]);
   mission.learnGrowth(); mission.learnWater(LEVEL_LAYOUT.garden);
-  for (const sample of ["soil", "tomato", "wheat"]) mission.collect(sample);
+  for (const sample of ["soil", "tomato", "wheat"]) mission.collect(sample, "shovel");
   assert.equal(mission.readyToReport, true);
   assert.equal(state().markers.some(marker => marker.id === "colony2"), false);
   mission.beginDeposit();

@@ -1,8 +1,10 @@
+import { attachDialogueText } from "./narration-captions.js";
 import * as THREE from "three";
-import { DIRECT_ALIEN_DIALOGUE } from "./ice-aftermath.js";
+import { DIRECT_ALIEN_DIALOGUE, RECOGNITION_DIALOGUE, TASK_DIALOGUE } from "./ice-dialogue.mjs";
+import { createDialogueDubbing } from "./alien-dubbing.js";
 import { dialogueSession } from "./dialogue-session.js";
 
-export function createIceInteraction(encounter, { channel = dialogueSession, onComplete = () => {}, getTool = () => "baton" } = {}) {
+export function createIceInteraction(encounter, { channel = dialogueSession, onComplete = () => {}, getTool = () => "baton", dubbingFactory = createDialogueDubbing } = {}) {
   const root = document.createElement("div");
   root.id = "ice-colony-interface";
   root.hidden = true;
@@ -16,11 +18,19 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
     <p id="ice-prompt" class="colony-talk-prompt" hidden></p>
     <section id="ice-dialogue" class="dialogue-box colony-dialogue" hidden aria-label="Colony 2 conversation">
       <p id="ice-speaker" class="colony-eyebrow"></p><p id="ice-line"></p>
-      <p class="colony-dialogue-hint">E — continue · Walk away to leave</p>
+      <p id="ice-dialogue-hint" class="colony-dialogue-hint">E — continue · Walk away to leave</p>
     </section>`;
   document.body.appendChild(root);
   const element = id => root.querySelector(`#${id}`);
   const owner = {};
+  const dubbing = dubbingFactory({ owner,
+    onAudio: (audio, entry) => attachDialogueText(audio, entry, { box: element("ice-dialogue"), speaker: element("ice-speaker"), line: element("ice-line") }),
+    onChange: ({ busy, status }) => {
+    if (["finished", "error", "completed"].includes(status) && conversation) element("ice-line").textContent = lines[line].text;
+    element("ice-dialogue-hint").textContent = busy
+      ? "Speaking... Enter - Skip voice | Walk away to leave"
+      : "Enter / E - Continue | Walk away to leave";
+  } });
   let open = false, conversation = null, lines = [], line = 0, introducedPhase = null;
   let toolInstructionTime = 0, previousTool = null, previousSample = null;
   const targets = encounter.base.group.children.filter(piece => /ice_block|crystal/.test(piece.name)).map(piece => ({
@@ -34,15 +44,19 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
   element("ice-objectives-toggle").addEventListener("click", toggle);
   function close() {
     conversation = null;
+    dubbing.stop();
     channel.end(owner);
     element("ice-dialogue").hidden = true;
     encounter.turnHostile();
   }
   function show() {
     const entry = lines[line];
+    dubbing.stop();
     element("ice-dialogue").hidden = false;
     element("ice-speaker").textContent = entry.speaker;
-    element("ice-line").textContent = entry.text;
+    element("ice-dialogue").classList?.toggle("apollo-dialogue", entry.speaker.startsWith("Apollo"));
+    element("ice-line").textContent = entry.voiceSpeaker && !entry.text.startsWith("[") ? "" : entry.text;
+    if (entry.voiceSpeaker) void dubbing.start(entry, entry.voiceSpeaker);
     if (entry.tasks) encounter.assignTasks();
   }
   function closestAlien(position) {
@@ -68,9 +82,15 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
     prepareStrike() {
       if (conversation && ["recognition", "hostile"].includes(encounter.phase)) close();
     },
-    setVisible(visible) { root.hidden = !visible; },
+    setVisible(visible) { root.hidden = !visible; dubbing.setPaused(!visible); },
+    handleSkip() {
+      if (!conversation || root.hidden) return false;
+      if (dubbing.busy) dubbing.complete();
+      else { line++; if (line >= lines.length) close(); else show(); }
+      return true;
+    },
     leave: close,
-    destroy() { close(); root.remove(); },
+    destroy() { close(); dubbing.destroy(); root.remove(); },
     update(player, keyboard, delta = 0) {
       if (keyboard?.consumeJustPressed("KeyQ")) toggle();
       if (conversation && Math.hypot(player.position.x - conversation.visual.position.x, player.position.z - conversation.visual.position.z) > 4.5) close();
@@ -82,6 +102,7 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
       const blocked = channel.isBlocked(owner);
       if (keyboard?.consumeJustPressed("KeyE") && !blocked) {
         if (conversation) {
+          if (dubbing.busy) return;
           line++;
           if (line >= lines.length) close(); else show();
         } else if (sample) {
@@ -92,17 +113,9 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
         }
         else if (alien && channel.begin(owner)) {
           conversation = alien; line = 0;
-          if (encounter.recognize()) lines = [
-            { speaker: "You", text: "We came from the garden colony to ask about your water supply." },
-            { speaker: "Gray colonist", text: "You. We recognize you. That suit carries the same company mark. Stay away from our water!" },
-            { speaker: "Apollo", text: "They are turning hostile. Your taser baton is equipped. Put them to sleep—do not kill them." },
-          ];
+          if (encounter.recognize()) lines = RECOGNITION_DIALOGUE;
           else if (encounter.directContact) lines = DIRECT_ALIEN_DIALOGUE;
-          else lines = [
-            { speaker: "Downed gray alien", text: "[The alien speaks urgently in an untranslated language.]" },
-            { speaker: "You", text: "Apollo, translate that. What is he saying?" },
-            { speaker: "Apollo", text: "Translation processed. Mine an ice core with your inventory pickaxe, scan the water source, and take a crystal sample. Those are your priorities now.", tasks: true },
-          ];
+          else lines = TASK_DIALOGUE;
           show();
         }
       }

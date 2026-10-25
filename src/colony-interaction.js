@@ -1,3 +1,4 @@
+import { attachDialogueText } from "./narration-captions.js";
 import { createAlienDubbing } from "./alien-dubbing.js";
 import { renderSpeechWords } from "./speech-word-display.mjs";
 import { createSpeechChallenge } from "./speech-verification.mjs";
@@ -54,10 +55,14 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
   let conversation = null, lines = [], line = 0, renderedRevision = -1, objectivesOpen = false;
   let objectivesIntroduced = false, surveyIntroduced = mission.explained;
   let visible = false;
-  const dubbing = dubbingFactory({ owner: conversationOwner, site: colony.site, onChange: state => {
+  const dubbing = dubbingFactory({ owner: conversationOwner, site: colony.site,
+    onAudio: (audio, entry) => attachDialogueText(audio, entry, { box: dialogue, speaker: element("colony-speaker"), line: element("colony-dialogue-text") }),
+    onChange: state => {
     if (!conversation || !lines[line]?.dub) return;
-    const nextHint = "E - continue / Walk away to leave";
-    element("colony-dialogue-hint").textContent = state.status === "loading" ? "Preparing voice..."
+    if (state.status === "loading") element("colony-dialogue-text").textContent = "";
+    if (["error", "finished", "completed"].includes(state.status)) element("colony-dialogue-text").textContent = lines[line].text;
+    const nextHint = "Enter / E - Continue | Walk away to leave";
+    element("colony-dialogue-hint").textContent = state.status === "loading" ? "Preparing voice... Enter - Reveal line / Skip voice"
       : state.status === "playing" ? "Speaking... Press Enter to reveal the full line and stop the voice."
       : state.status === "paused" ? "Voice paused. Resume the game to continue."
       : state.status === "error" ? `Voice unavailable. ${nextHint}`
@@ -139,7 +144,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
     if (entry.requiresSpeech) renderSpeechWords(element("colony-dialogue-text"), speech.state);
     if (entry.effect === "growth") progress(mission.learnGrowth());
     if (entry.effect === "water") progress(mission.learnWater(colony.site));
-    if (entry.dub) void dubbing.start(entry, entry.voiceSpeaker ?? (entry.speaker.startsWith("Apollo") ? "Apollo" : conversation.profile.name));
+    if (entry.dub && !entry.requiresSpeech && entry.speaker !== "You") void dubbing.start(entry, entry.voiceSpeaker ?? (entry.speaker.startsWith("Apollo") ? "Apollo" : conversation.profile.name));
   }
   function baseInReach(player) {
     const target = getBaseTarget();

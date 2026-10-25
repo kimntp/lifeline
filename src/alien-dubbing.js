@@ -45,6 +45,7 @@ export function createDialogueDubbing({ owner, site = { x: 0, z: 0 }, onChange =
       else if (!paused && status === "paused") void beginPlayback(generation);
     },
     async start(entry, farmer) {
+      if (entry.requiresSpeech || entry.speaker === "You" || farmer === "You") { this.stop(); return; }
       generation++; cleanup();
       const attempt = generation;
       currentEntry = entry; currentSpeaker = farmer;
@@ -53,7 +54,7 @@ export function createDialogueDubbing({ owner, site = { x: 0, z: 0 }, onChange =
       try {
         const response = await request(`${import.meta.env?.BASE_URL ?? "/"}api/dialogue-voice`, {
           method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.any([abort.signal, AbortSignal.timeout(60000)]),
-          body: JSON.stringify({ text: entry.text, farmer, site, includeTimestamps: farmer === "Apollo" }),
+          body: JSON.stringify({ text: entry.text, farmer, site, includeTimestamps: true }),
         });
         if (!response.ok) throw new Error("Voice unavailable");
         let blob;
@@ -67,6 +68,7 @@ export function createDialogueDubbing({ owner, site = { x: 0, z: 0 }, onChange =
         if (attempt !== generation) return;
         url = makeUrl(blob);
         audio = register(audioFactory(), { owner, holdChannel: true, animateCompanion: farmer === "Apollo" });
+        audio.volume = 0.75;
         audio.addEventListener("ended", () => {
           if (attempt !== generation) return;
           cleanup(); emit("finished");

@@ -52,7 +52,7 @@ body {
 #colony-distance { font-size: 0.8rem; color: #ddd2e8; line-height: 1.5; }
 .colony-talk-prompt { position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%); z-index: 12; padding: 12px 20px; border: 1px solid #9880ae; border-radius: 8px; color: #f5edff; background: rgba(23, 15, 32, 0.9); pointer-events: none; white-space: nowrap; }
 .colony-dialogue { color: #f5effb; }
-#colony-dialogue-text { margin: 0; min-height: 2.9em; }
+#colony-dialogue-text, #ice-line, #aftermath-line { margin: 0; min-height: 2.9em; }
 .colony-dialogue-hint { font-size: 0.75rem; color: #b9a7cc; }
 
 .mission-panel {
@@ -569,7 +569,7 @@ button:focus-visible, select:focus-visible {
   min-height: 88px;
   padding: 12px calc(var(--companion-size) * 0.78) 12px 18px;
   border: 1px solid rgba(184, 184, 184, 0.45);
-  border-radius: 12px;
+  border-radius: 0;
   background: rgba(5, 9, 18, 0.92);
   color: #fff;
   font-size: clamp(15px, 1.2vw, 19px);
@@ -579,7 +579,7 @@ button:focus-visible, select:focus-visible {
   z-index: 6;
 }
 #narration-captions[hidden] { display: none; }
-#narration-speaker, #colony-speaker {
+#narration-speaker, #colony-speaker, #ice-speaker, #aftermath-speaker {
   display: block;
   margin-bottom: 4px;
   color: #b8b8b8;
@@ -667,7 +667,7 @@ button:focus-visible, select:focus-visible {
   border-color: #9172ac;
   color: #f5effb;
 }
-#colony-speaker { color: #d5b9f5; }
+.colony-dialogue .colony-eyebrow { color: #d5b9f5; }
 .colony-dialogue-hint { margin-top: 6px; }
 .colony-talk-prompt {
   top: max(100px, 18vh);
@@ -675,11 +675,10 @@ button:focus-visible, select:focus-visible {
 }
 
 .dialogue-box.ice-aftermath {
-  left: max(20px, 15vw); right: max(20px, 15vw);
-  padding: 20px; pointer-events: auto; z-index: 8;
-  border-color: #a4bdcb;
+  pointer-events: auto;
 }
-.ice-aftermath button { margin-top: 12px; padding: 8px 16px; cursor: pointer; }
+.ice-aftermath button { display: block; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.ice-aftermath button:disabled { cursor: default; opacity: 1; }
 .ice-aftermath[hidden] { display: none; }
 
 .tool-inventory { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
@@ -708,7 +707,7 @@ button:focus-visible, select:focus-visible {
 }
 
 .dialogue-box.apollo-dialogue { background: rgba(5, 9, 18, 0.92); border-color: rgba(184, 184, 184, 0.45); }
-.apollo-dialogue #colony-speaker { color: #b8b8b8; }
+.apollo-dialogue .colony-dialogue .colony-eyebrow { color: #b8b8b8; }
 
 .menu-shell:not(.home-screen) .home-logo {
   width: min(220px, 100%);
@@ -786,17 +785,19 @@ button:focus-visible, select:focus-visible {
 .survey-montage { position: fixed; inset: 0; z-index: 9; color: #fff; pointer-events: none; }
 .montage-letterbox { position: absolute; left: 0; right: 0; background: #000; }
 .montage-top { top: 0; height: 8vh; }
-.montage-bottom { bottom: 0; min-height: 16vh; padding: 18px 24px; text-align: center; }
+.montage-bottom { pointer-events: auto; }
 .montage-region { position: absolute; top: 11vh; left: 5vw; font-size: clamp(11px, 1.4vw, 15px); letter-spacing: .16em; text-shadow: 0 2px 8px #000; }
-.montage-caption { max-width: 760px; margin: 0 auto 10px; font-size: clamp(14px, 1.7vw, 20px); line-height: 1.5; }
-.montage-bottom button { pointer-events: auto; background: transparent; color: #b8bec9; border: 0; padding: 5px 12px; }
+.montage-caption { margin: 0; min-height: 2.9em; }
+.montage-bottom button { display: block; background: transparent; border: 0; padding: 0; text-align: left; cursor: pointer; }
 .montage-dissolve { position: absolute; inset: 0; background: #000; pointer-events: none; }
 .survey-montage[hidden], body.survey-cinematic #orangebot-overlay,
 body.survey-cinematic #narration-captions { display: none !important; }
 
-.aftermath-link { margin-top: 8px; color: #91ced7; font-family: monospace; font-size: .78em; letter-spacing: .06em; }
+.aftermath-link { margin-top: 8px; color: #b9a7cc; font-family: inherit; font-size: .75em; letter-spacing: .06em; }
 body.apollo-glitch #orangebot-overlay { filter: hue-rotate(55deg) saturate(1.6) drop-shadow(3px 0 1px #87cfdf);
   animation: apollo-link-failure 1.2s steps(2, end) infinite; }
 body.apollo-glitch .ice-aftermath { border-color: #bf83b5; }
 @keyframes apollo-link-failure { 0%,100% { transform: translateX(0) skewX(0); } 35% { transform: translateX(-4px) skewX(-3deg); } 65% { transform: translateX(3px) skewX(2deg); } }
 @media (prefers-reduced-motion: reduce) { body.apollo-glitch #orangebot-overlay { animation: none; } }
+
+.dialogue-box > .colony-eyebrow { display: block; margin: 0 0 4px; font-size: .75em; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
