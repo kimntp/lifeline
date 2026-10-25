@@ -924,9 +924,9 @@ function requestPlay() {
   gameMenu.status("");
   try {
     const request = shared.renderer.domElement.requestPointerLock();
-    request?.catch(() => gameMenu.status("Mouse capture was declined. Click Start or Resume to try again."));
+    request?.catch(() => gameMenu.failStart("Mouse capture was declined. Click Start or Resume to try again."));
   } catch {
-    gameMenu.status("Mouse capture is unavailable. Click Start or Resume to try again.");
+    gameMenu.failStart("Mouse capture is unavailable. Click Start or Resume to try again.");
   }
 }
 
@@ -1131,7 +1131,7 @@ document.addEventListener("pointerlockchange", () => {
     if (shared.stateMachine?.preview) shared.stateMachine.setPreview("");
     clearGameInput();
     const startGame = () => {
-      session.play();
+      if (!session.play()) throw new Error("The world is not ready to start.");
       gameMenu.render();
       shared.renderer.domElement.focus();
     };
@@ -1175,5 +1175,5 @@ document.addEventListener("visibilitychange", () => {
 
 main().catch(error => {
   console.error("[game] Failed to initialize:", error);
-  gameMenu.status("The world could not load. Refresh to try again.");
+  gameMenu.failStart("The world could not load. Refresh to try again.");
 });
