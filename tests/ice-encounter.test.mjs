@@ -131,7 +131,7 @@ test("downed alien dialogue unlocks Apollo's tasks without giving an exact trans
     ui.leave(); // The guard cutscene closes the encounter UI before unlocking direct contact.
     encounter.directContact = true;
     player.position.copy(encounter.lastAlien.visual.position);
-    press(); press();
+    press(); press(); press();
     assert.equal(elements.get("#ice-line").textContent, "", "Alien disclosures reveal with their voice");
     assert.doesNotMatch(elements.get("#ice-line").textContent, /Translation processed/);
     ui.destroy();

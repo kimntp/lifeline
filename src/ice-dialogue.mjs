@@ -16,11 +16,11 @@ export const TASK_DIALOGUE = voiced([
             { speaker: "You - Inner thoughts", innerThought: true, musicMood: "unsettling", text: "Why is Apollo brushing him off? That didn't sound like a translation. Are they really just asleep...?" },
           ]);
 export const DIRECT_ALIEN_DIALOGUE = voiced([
+  { speaker: "Apollo · damaged link", text: "[Translation filter offline. Direct channel established.]" },
   { speaker: "You", text: "You were trying to warn me. What is the company doing here?" },
   { speaker: "Downed gray alien", emotional: true, text: "They take our crops and our water to Earth. Our families are forced to work." },
   { speaker: "You", text: "Apollo told me the samples would help everyone." },
   { speaker: "Downed gray alien", emotional: true, text: "Your samples show them what to take next. If we refuse, their guards beat us. When we collapse, they replace us." },
-  { speaker: "Apollo · damaged link", text: "[Translation filter offline. Direct channel established.]" },
   { speaker: "Downed gray alien", emotional: true, text: "You heard me before he changed my words. Now you know. Will you help us?" },
   { speaker: "You", text: "I'll listen to you. Tell me what you need." },
   { speaker: "Downed gray alien", emotional: true, text: "Be our Lifeline." },

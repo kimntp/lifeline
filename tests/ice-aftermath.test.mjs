@@ -64,6 +64,8 @@ test("four guards march in, knock the astronaut down, and Apollo glitches into a
     cutscene.update(5, false); assert.equal(cutscene.phase, "glitch"); assert.equal(classes.has("apollo-glitch"), false);
     cutscene.update(3, true); assert.equal(cutscene.phase, "dialogue"); assert.equal(cutscene.musicMood, "sad");
     assert.equal(directContacts, 1);
+    assert.match(elements.get("#aftermath-speaker").textContent, /Apollo/);
+    assert.match(DIRECT_ALIEN_DIALOGUE[0].text, /Translation filter offline/);
     assert.equal(classes.has("apollo-glitch"), false);
     assert.match(elements.get("#aftermath-link").textContent, /DIRECT ALIEN CHANNEL/);
     assert.ok(DIRECT_ALIEN_DIALOGUE.some(entry => /Earth/.test(entry.text) && /forced to work/.test(entry.text)));
