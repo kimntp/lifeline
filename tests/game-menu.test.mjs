@@ -78,8 +78,7 @@ test("home screen renders its real logo and start button, then switches to pause
           addEventListener(name, callback) { events.set(name, callback); },
           setAttribute(name, value) { this.attributes.set(name, value); },
           focus() { globalThis.document.activeElement = this; },
-          play() { this.playing = true; return Promise.resolve(); },
-          pause() { this.playing = false; },
+          getContext() { return null; },
           add() {}, events,
         });
       }
@@ -99,24 +98,33 @@ test("home screen renders its real logo and start button, then switches to pause
     assert.equal(elements.get("home-logo").hidden, false);
     assert.equal(elements.get("instructions-button").hidden, true);
     assert.equal(elements.get("play-button").disabled, true);
-    assert.equal(elements.get("home-video").playing, true);
+    assert.equal(elements.has("home-video"), false);
+    assert.equal(elements.get("home-stars").hidden, false);
+    assert.equal(elements.get("home-background").hidden, false);
+    assert.equal(elements.get("home-ship").hidden, false);
+    assert.equal(elements.get("home-transmission").hidden, false);
     session.ready = true;
     menu.render();
     assert.equal(elements.get("play-button").disabled, false);
-    assert.equal(elements.get("play-button").textContent, "Start exploring");
+    assert.equal(elements.get("play-label").textContent, "Start exploring");
     elements.get("play-button").events.get("click")();
     assert.equal(starts, 1);
     session.play(); menu.render();
     assert.equal(elements.get("game-menu").hidden, true);
-    assert.equal(elements.get("home-video").playing, false);
+    assert.equal(elements.get("home-stars").hidden, true);
+    assert.equal(elements.get("home-background").hidden, true);
+    assert.equal(elements.get("home-ship").hidden, true);
+    assert.equal(elements.get("home-transmission").hidden, true);
     session.pause(); menu.render();
     assert.equal(elements.get("home-logo").hidden, true);
+    assert.equal(elements.get("home-background").hidden, true);
     assert.equal(elements.get("instructions-button").hidden, false);
-    assert.equal(elements.get("play-button").textContent, "Resume");
+    assert.equal(elements.get("play-label").textContent, "Resume");
     session.home(); menu.render();
     assert.equal(elements.get("home-logo").hidden, false);
-    assert.equal(elements.get("home-video").playing, true);
-    assert.equal(elements.get("play-button").textContent, "Continue exploring");
+    assert.equal(elements.get("home-stars").hidden, false);
+    assert.equal(elements.get("home-background").hidden, false);
+    assert.equal(elements.get("play-label").textContent, "Continue exploring");
   } finally {
     globalThis.document = originalDocument;
     globalThis.Option = originalOption;
