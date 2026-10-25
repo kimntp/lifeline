@@ -6,12 +6,27 @@ import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { ASTRONAUT_CLIPS, AstronautAnimator } from "./astronaut-animations.js";
 import { TerrainGround, advanceGroundedActor, measureFootOffset } from "./terrain-ground.js";
 import { createTerrainSurround } from "./terrain-surround.js";
+import { GameSession, createGameMenu } from "./game-menu.js";
+import { placeSpaceBase, foundationHeightAt, getPlayerSpawn, relocateSpaceBase } from "./space-base.js";
+import { resolveBaseCollision, resolvePlatformCollision } from "./base-collision.js";
+import { buildGardenColony } from "./garden-colony.js";
+import { createColonyInteraction } from "./colony-interaction.js";
+import { createAlienLoader, prepareAlienModel } from "./alien-farmers.js";
+
+const session = new GameSession();
+const BASE_SPAWN_STORAGE_KEY = "lifeline:level-1:base-spawn";
+const PLAYER_SPAWN_STORAGE_KEY = "lifeline:level-1:player-spawn";
+const COLONY_STORAGE_KEY = "lifeline:level-1:garden-colony";
 
 const shared = {
   scene: null,
   renderer: null,
   camera: null,
   city: null,
+  spaceBase: null,
+  colony: null,
+  colonyModels: null,
+  colonyInteraction: null,
   terrainGround: null,
   playerFootOffset: 0,
   player: null,
@@ -30,6 +45,11 @@ const flags = {
   movement: false,
   cameraFollow: false,
 };
+
+function worldGroundHeight(x, z) {
+  const terrain = shared.terrainGround?.heightAt(x, z) ?? 0;
+  return foundationHeightAt(shared.spaceBase, x, z, Math.max(terrain, shared.colony?.heightAt(x, z) ?? terrain));
+}
 
 let _previewId = null;
 let _previewing = false;
@@ -105,11 +125,15 @@ function startPreview() {
     const delta = Math.min(clock.getDelta(), 0.1);
 
     // Execute every registered per-frame feature callback in sequence
-    for (const fn of _previewFns) {
-      fn(delta);
+    if (!session.paused) {
+      for (const fn of _previewFns) fn(delta);
+    } else if (session.screen === "animations" && shared.stateMachine?.preview) {
+      // Only the selected preview animates; gameplay remains frozen.
+      shared.mixer.update(delta);
     }
 
     // Final render pass — draw everything to the canvas
+    shared.colonyInteraction?.setVisible(!session.paused);
     const { scene, renderer, camera } = shared;
     if (scene && renderer && camera) {
       renderer.render(scene, camera);
@@ -252,6 +276,60 @@ async function step2_city() {
   });
 }
 
+async function loadSpaceBase() {
+  const manager = new THREE.LoadingManager();
+  const paletteLoader = new THREE.TextureLoader(manager);
+  paletteLoader.load = function (url, onLoad, onProgress, onError) {
+    if (!/multpaleta\.png$/i.test(url)) {
+      return THREE.TextureLoader.prototype.load.call(this, url, onLoad, onProgress, onError);
+    }
+    // Avoid a missing-file request for the FBX's unavailable palette.
+    const texture = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+    texture.needsUpdate = true;
+    queueMicrotask(() => onLoad?.(texture));
+    return texture;
+  };
+  manager.addHandler(/\.png$/i, paletteLoader);
+  const base = await new FBXLoader(manager).loadAsync("/assets/Base.fbx");
+  shared.spaceBase = placeSpaceBase(base, shared.terrainGround);
+  try {
+    const saved = JSON.parse(localStorage.getItem(BASE_SPAWN_STORAGE_KEY));
+    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.z)) {
+      relocateSpaceBase(shared.spaceBase, shared.terrainGround, saved.x, saved.z);
+    }
+  } catch {
+    // Use the default level placement if storage is unavailable or stale.
+  }
+  shared.scene.add(shared.spaceBase);
+}
+
+async function loadGardenColony() {
+  const loader = new FBXLoader();
+  const alienLoader = createAlienLoader();
+  const [tomato, wheat, dome, gray, green] = await Promise.all([
+    loader.loadAsync("/assets/Tomato%20Plant.fbx"),
+    loader.loadAsync("/assets/Wheat%20Crop.fbx"),
+    loader.loadAsync("/assets/hab_dome.fbx"),
+    alienLoader.loadAsync("/assets/Alien_Low_Gray.fbx"),
+    alienLoader.loadAsync("/assets/Alien_Low_Green.fbx"),
+  ]);
+  shared.colonyModels = { tomato, wheat, dome, aliens: { gray: prepareAlienModel(gray), green: prepareAlienModel(green) } };
+  const options = { ...shared.colonyModels, ground: shared.terrainGround,
+    baseBounds: new THREE.Box3().setFromObject(shared.spaceBase) };
+  try {
+    const location = JSON.parse(localStorage.getItem(COLONY_STORAGE_KEY));
+    shared.colony = buildGardenColony({ ...options, location });
+  } catch {
+    shared.colony = buildGardenColony(options);
+  }
+  shared.scene.add(shared.colony.group);
+  shared.colonyInteraction = createColonyInteraction(shared.colony);
+  addPreviewFn(delta => shared.colony.update(delta), 51);
+  addPreviewFn(() => {
+    if (shared.player) shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
+  }, 52);
+}
+
 function buildProceduralCity(scene) {
   const g = new THREE.Group();
   g.name = "City";
@@ -299,10 +377,6 @@ function step3_cityMovement() {
   const { renderer, camera, look } = shared;
   let locked = false;
 
-  renderer.domElement.addEventListener("click", () => {
-    renderer.domElement.requestPointerLock();
-  });
-
   document.addEventListener("pointerlockchange", () => {
     locked = document.pointerLockElement === renderer.domElement;
     renderer.domElement.style.cursor = locked ? "none" : "default";
@@ -310,7 +384,7 @@ function step3_cityMovement() {
 
   // Mouse move drives either third-person yaw/pitch or free-orbit around city center
   document.addEventListener("mousemove", (e) => {
-    if (!locked) return;
+    if (!locked || session.paused) return;
     if (flags.cameraFollow) {
       // Third-person mode: accumulate yaw/pitch from mouse delta
       look.yaw -= e.movementX * look.sensitivity;
@@ -342,7 +416,7 @@ function step3_cityMovement() {
   renderer.domElement.addEventListener(
     "wheel",
     (e) => {
-      if (!locked) return;
+      if (!locked || session.paused) return;
       if (flags.cameraFollow) {
         // Third-person: zoom distance relative to player (2–20 units)
         const next = shared.cameraDistance + e.deltaY * 0.01;
@@ -399,18 +473,28 @@ async function step4_player() {
     }
   });
 
-  // Spawn at the terrain surface; step5 aligns the feet after posing the rig.
-  player.position.set(0, shared.terrainGround?.heightAt(0, 0) ?? 0, 0);
+  // Restore this level's chosen spawn, or start beside the base by default.
+  let savedSpawn = null;
+  try { savedSpawn = JSON.parse(localStorage.getItem(PLAYER_SPAWN_STORAGE_KEY)); } catch {}
+  let spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, savedSpawn);
+  if (spawn.custom && shared.colony) {
+    const checked = spawn.position.clone();
+    resolveBaseCollision(checked, spawn.position, shared.colony.domeBounds);
+    if (checked.distanceToSquared(spawn.position) > 1e-8) spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, null);
+  }
+  player.position.copy(spawn.position);
+  player.rotation.y = spawn.yaw;
   scene.add(player);
   shared.player = player;
 
   // Position camera looking at the player's chest for immediate feedback
-  camera.position.set(3, 2.5, 5);
+  camera.position.set(player.position.x + Math.sin(spawn.cameraYaw) * shared.cameraDistance,
+    player.position.y + 2.5, player.position.z + Math.cos(spawn.cameraYaw) * shared.cameraDistance);
   camera.lookAt(player.position.x, player.position.y + 0.9, player.position.z);
   renderer.render(scene, camera);
 
   // Match stored yaw to camera angle so subsequent mouse input is seamless
-  shared.look.yaw = Math.atan2(3, 5);
+  shared.look.yaw = spawn.cameraYaw;
 
   return player;
 }
@@ -419,7 +503,7 @@ async function step5_animations() {
   const animator = new AstronautAnimator(shared.player);
   animator.mixer.update(0);
   shared.playerFootOffset = measureFootOffset(shared.player);
-  shared.playerState.groundY = shared.terrainGround?.heightAt(shared.player.position.x, shared.player.position.z) ?? 0;
+  shared.playerState.groundY = worldGroundHeight(shared.player.position.x, shared.player.position.z);
   shared.player.position.y = shared.playerState.groundY + shared.playerFootOffset;
   shared.mixer = animator.mixer;
   shared.actions = animator.actions;
@@ -446,10 +530,20 @@ function step6_gravity() {
   flags.gravity = true;
   // Run after horizontal movement and wall collision, before the camera.
   addPreviewFn((delta) => {
-    const { player, playerState, terrainGround, playerFootOffset } = shared;
+    const { player, playerState, playerFootOffset } = shared;
     if (!player || !flags.gravity) return;
-    const groundY = terrainGround?.heightAt(player.position.x, player.position.z) ?? 0;
-    advanceGroundedActor(player, playerState, playerFootOffset, groundY, delta);
+    const groundY = worldGroundHeight(player.position.x, player.position.z);
+    let support = shared.terrainGround;
+    const platforms = [shared.spaceBase?.userData.foundationBounds,
+      ...(shared.colony?.plots.map(plot => plot.bounds) ?? [])];
+    for (const bounds of platforms) {
+      if (bounds && player.position.x >= bounds.min.x && player.position.x <= bounds.max.x
+        && player.position.z >= bounds.min.z && player.position.z <= bounds.max.z
+        && Math.abs(groundY - bounds.max.y) < 1e-4) support = bounds;
+    }
+    advanceGroundedActor(player, playerState, playerFootOffset, groundY, delta,
+      { snapDown: playerState.support === support });
+    playerState.support = support;
   }, 30);
 }
 
@@ -488,6 +582,8 @@ function step7_movement() {
       this.keys = {};
       this.justPressed = new Set();
       this._kd = (e) => {
+        if (session.paused) return;
+        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
         if (!this.keys[e.code]) this.justPressed.add(e.code);
         this.keys[e.code] = true;
         playIntroOnMovement(e.code, this.keys);
@@ -580,55 +676,6 @@ function step7_movement() {
 function step8_cameraFollow() {
   flags.cameraFollow = true;
 
-  const { renderer } = shared;
-  // Show instructions overlay when pointer is unlocked
-  const overlay = document.createElement("div");
-  overlay.id = "click-to-play";
-  overlay.innerHTML = `
-    <div class="overlay-inner">
-      <h1>Click to Play</h1>
-      <p><strong>W A S D</strong> — move  <strong>Shift</strong> — sprint</p>
-      <p><strong>Space</strong> — jump  <strong>H</strong> — mining swing</p>
-      <p><strong>E</strong> — attack enemy  <strong>F</strong> — toggle free-fly camera</p>
-      <p><strong>Mouse</strong> — look  <strong>Esc</strong> — release mouse</p>
-    </div>`;
-  document.body.appendChild(overlay);
-  const animationPanel = document.createElement("div");
-  animationPanel.id = "astronaut-animations";
-  const label = document.createElement("label");
-  label.htmlFor = "astronaut-animation";
-  label.textContent = "Astronaut animation";
-  const select = document.createElement("select");
-  select.id = "astronaut-animation";
-  select.add(new Option("Gameplay (automatic)", ""));
-  for (const name of ASTRONAUT_CLIPS) {
-    select.add(new Option(name, name));
-  }
-  const hint = document.createElement("p");
-  hint.textContent = "Select a clip to preview. Click the scene to return to gameplay.";
-  animationPanel.append(label, select, hint);
-  document.body.appendChild(animationPanel);
-  select.addEventListener("change", () => {
-    shared.stateMachine.setPreview(select.value);
-    overlay.classList.toggle("animation-preview", Boolean(select.value));
-  });
-  overlay.addEventListener("click", () => {
-    shared.stateMachine.setPreview("");
-    select.value = "";
-    overlay.classList.remove("animation-preview");
-    renderer.domElement.requestPointerLock();
-  });
-  // Show/hide overlay whenever pointer lock state changes
-  document.addEventListener("pointerlockchange", () => {
-    if (document.pointerLockElement === renderer.domElement) {
-      overlay.style.display = "none";
-      animationPanel.hidden = true;
-    } else if (flags.cameraFollow) {
-      overlay.style.display = "flex";
-      animationPanel.hidden = false;
-    }
-  });
-
   // Every frame: position camera behind player with smooth exponential interpolation
   addPreviewFn((delta) => {
     const { player, camera, look, keyboard, renderer } = shared;
@@ -660,7 +707,7 @@ function step8_cameraFollow() {
       // Exponential ease (frame-rate independent lerp) for smooth camera movement
       const k = 1 - Math.exp(-14 * delta);
       LS.smoothCamPos.lerp(LS.camPos, k);
-      const cameraGroundY = shared.terrainGround?.heightAt(LS.smoothCamPos.x, LS.smoothCamPos.z) ?? 0;
+      const cameraGroundY = worldGroundHeight(LS.smoothCamPos.x, LS.smoothCamPos.z);
       LS.smoothCamPos.y = Math.max(cameraGroundY + 1, LS.smoothCamPos.y);
       LS.smoothCamLook.lerp(LS.camLook, k);
       camera.position.copy(LS.smoothCamPos);
@@ -681,7 +728,7 @@ function step8_cameraFollow() {
         camera.position.addScaledVector(LS.freeRight, -speed);
       if (keyboard && keyboard.right)
         camera.position.addScaledVector(LS.freeRight, speed);
-      const cameraGroundY = shared.terrainGround?.heightAt(camera.position.x, camera.position.z) ?? 0;
+      const cameraGroundY = worldGroundHeight(camera.position.x, camera.position.z);
       camera.position.y = Math.max(cameraGroundY + 1, camera.position.y);
     }
   }, 40);
@@ -696,6 +743,8 @@ function step9_collision() {
   shared.city?.traverse(node => {
     if (node.isMesh && !node.userData.walkableTerrain) wallMeshes.push(node);
   });
+  // Block only the building; the surrounding foundation is a walkable floor.
+  const baseBounds = shared.spaceBase?.userData.buildingBounds ?? null;
 
   // Compute city boundary once: uses City group AABB or falls back to ±100
   const _boundary = new THREE.Box2();
@@ -742,24 +791,22 @@ function step9_collision() {
         ray.set(_prev, dir);
         const hits = ray.intersectObjects(wallMeshes, false);
         for (const hit of hits) {
-          let o = hit.object;
-          let exclude = false;
-          // Walk up parent chain — skip player and enemy meshes
-          while (o) {
-            if (o === player || o.name === "Enemy") {
-              exclude = true;
-              break;
-            }
-            o = o.parent;
-          }
           // Push player back so they stop at wall surface (accounting for player radius)
-          if (!exclude && !hit.object.userData.walkableTerrain && hit.distance < moveDist + radius) {
+          if (!hit.object.userData.walkableTerrain && hit.distance < moveDist + radius) {
             const allowed = Math.max(0, hit.distance - radius);
             player.position.x = prevPos.x + dir.x * allowed;
             player.position.z = prevPos.z + dir.z * allowed;
           }
         }
       }
+    }
+
+    if (baseBounds) resolveBaseCollision(player.position, prevPos ?? player.position, baseBounds, radius);
+    if (shared.colony) resolveBaseCollision(player.position, prevPos ?? player.position, shared.colony.domeBounds, radius);
+    const platforms = [shared.spaceBase?.userData.foundationBounds,
+      ...(shared.colony?.plots.map(plot => plot.bounds) ?? [])];
+    for (const bounds of platforms) {
+      if (bounds) resolvePlatformCollision(player.position, prevPos ?? player.position, bounds, shared.playerFootOffset, radius);
     }
 
     // Final safety clamp: keep player inside city boundary (±100 with padding)
@@ -778,508 +825,6 @@ function step9_collision() {
   }, 20);
 }
 
-async function step10_enemies() {
-  const { scene } = shared;
-  const ENEMY_COUNT = 15;
-  const ENEMY_PATROL_RADIUS = 60;
-  const ENEMY_PLAYER_DETECT = 12;
-
-  // Pre-cache buildings as 2D bounding spheres for fast distance checks (no raycasts)
-  const _buildingSpheres = [];
-
-  // Traverse City group once and store each tall building as a center+radius sphere
-  function cacheBuildingSpheres(scene) {
-    if (_buildingSpheres.length > 0) return;
-    scene.traverse((c) => {
-      if (c.userData.walkableTerrain) return;
-      if (c.isMesh && c.geometry && c.parent?.name !== "City") return;
-      if (c.isMesh && c.geometry) {
-        const box = new THREE.Box3().setFromObject(c);
-        const center = new THREE.Vector3();
-        const size = new THREE.Vector3();
-        box.getCenter(center);
-        box.getSize(size);
-        if (size.y > 3) {
-          _buildingSpheres.push({
-            x: center.x,
-            z: center.z,
-            r: Math.max(size.x, size.z) * 0.6,
-          });
-        }
-      }
-    });
-  }
-  // Returns true if (x,z) is inside any building — used to stop enemies walking through walls
-  function isNearBuilding(x, z) {
-    for (let i = 0; i < _buildingSpheres.length; i++) {
-      const b = _buildingSpheres[i];
-      const dx = x - b.x;
-      const dz = z - b.z;
-      if (dx * dx + dz * dz < b.r * b.r) return true;
-    }
-    return false;
-  }
-
-  // One enemy NPC with waypoint patrol, walk animation, and player detection AI
-  class EnemyNPC {
-    // Set random personality: speed, idle duration, waypoints, look direction
-    constructor(scene, basePos) {
-      this.scene = scene;
-      this.mesh = null;
-      this.mixer = null;
-      this.actions = {};
-      this.position = basePos.clone();
-      this.currentWaypoint = 0;
-      this.state = "walk";
-      this.idleTimer = 2 + Math.random() * 3;
-      this.idleCountdown = Math.random() * 5;
-      this.speed = 2.5 + Math.random() * 1.5;
-      this.lookYaw = Math.random() * Math.PI * 2;
-      this.health = 2 + Math.floor(Math.random() * 2); // 2-3 hits to kill
-      this.dead = false;
-      this._deathTimer = 0;
-      this._hitFlash = 0;
-      this._toTarget = new THREE.Vector3();
-      this._dir = new THREE.Vector3();
-      this._stuckFrames = 0;
-      this._lastPos = new THREE.Vector3();
-      this._skipCounter = Math.floor(Math.random() * 10);
-
-      this.waypoints = this._generateWaypoints();
-    }
-
-    // Create 3-6 random waypoints around spawn, avoiding building interiors
-    _generateWaypoints() {
-      const pts = [];
-      const count = 3 + Math.floor(Math.random() * 3);
-      for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 10 + Math.random() * ENEMY_PATROL_RADIUS;
-        const x = this.position.x + Math.cos(angle) * dist;
-        const z = this.position.z + Math.sin(angle) * dist;
-        // Only accept waypoint if it's not inside a building
-        if (!isNearBuilding(x, z)) {
-          pts.push(new THREE.Vector3(x, 0, z));
-        } else {
-          // Fallback: random point within 40 units of spawn
-          pts.push(
-            new THREE.Vector3(
-              this.position.x + (Math.random() - 0.5) * 40,
-              0,
-              this.position.z + (Math.random() - 0.5) * 40,
-            ),
-          );
-        }
-      }
-      const bounds = shared.terrainGround?.bounds;
-      if (bounds) {
-        for (const point of pts) {
-          point.x = THREE.MathUtils.clamp(point.x, bounds.min.x + 0.5, bounds.max.x - 0.5);
-          point.z = THREE.MathUtils.clamp(point.z, bounds.min.z + 0.5, bounds.max.z - 0.5);
-          point.y = shared.terrainGround.heightAt(point.x, point.z);
-        }
-      }
-      return pts;
-    }
-
-    // Load Enemy.fbx, scale to 1.7m, apply random color, load walk animation
-    async load() {
-      const loader = new FBXLoader();
-
-      // Load model, scale uniformly to ~1.7m, shift up so feet rest on ground
-      const model = await new Promise((res, rej) => {
-        loader.load("/assets/Enemy.fbx", res, undefined, rej);
-      });
-      model.name = "Enemy";
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      const TARGET = 1.7;
-      if (size.y > 0.01) model.scale.setScalar(TARGET / size.y);
-      box.setFromObject(model);
-      this.footOffset = model.position.y - box.min.y;
-      // Walk meshes: enable shadows, assign a random hue for visual variety
-      model.traverse((c) => {
-        if (c.isMesh) {
-          c.castShadow = true;
-          c.receiveShadow = true;
-          if (c.material) {
-            (Array.isArray(c.material) ? c.material : [c.material]).forEach(
-              (m) => {
-                if (m.color) {
-                  const hue = Math.random();
-                  m.color.setHSL(hue, 0.5, 0.4);
-                  // Store hue on userData so hit-flash can restore the original color
-                  c.userData._hue = hue;
-                }
-              },
-            );
-          }
-        }
-      });
-
-      this.mesh = model;
-      this.mesh.position.copy(this.position);
-      this.snapToTerrain();
-      this.scene.add(this.mesh);
-
-      const mixer = new THREE.AnimationMixer(model);
-      this.mixer = mixer;
-
-      // Load walk animation (always present for patrolling enemies)
-      try {
-        const walkRoot = await new Promise((res, rej) => {
-          loader.load("/assets/Enemy_Walk.fbx", res, undefined, rej);
-        });
-        if (walkRoot.animations && walkRoot.animations.length > 0) {
-          const clip = walkRoot.animations[0];
-          const a = mixer.clipAction(clip);
-          a.setLoop(THREE.LoopRepeat, Infinity);
-          a.enabled = true;
-          a.setEffectiveWeight(0);
-          a.play();
-          this.actions.walk = a;
-        }
-      } catch (_) {}
-
-      // Load death/fall animation (optional — silently skip if FBX is missing)
-      try {
-        const fallRoot = await new Promise((res, rej) => {
-          loader.load("/assets/Enemy_Fall.fbx", res, undefined, rej);
-        });
-        if (fallRoot.animations && fallRoot.animations.length > 0) {
-          const clip = fallRoot.animations[0];
-          const a = mixer.clipAction(clip);
-          // Fall plays once and holds last frame (ragdoll-like frozen pose)
-          a.setLoop(THREE.LoopOnce, 1);
-          a.clampWhenFinished = true;
-          a.enabled = true;
-          a.setEffectiveWeight(0);
-          a.play();
-          this.actions.fall = a;
-        }
-      } catch (_) {}
-
-      this._setAnim("walk");
-      mixer.update(0);
-      this.footOffset = measureFootOffset(model);
-      this.snapToTerrain();
-    }
-
-    // Crossfade animation weight to `name` (walk or idle)
-    _setAnim(name) {
-      if (this.animState === name) return;
-      this.animState = name;
-      for (const [k, a] of Object.entries(this.actions)) {
-        a.setEffectiveWeight(k === name ? 1 : 0, 0.2);
-      }
-    }
-
-    // Reduce health, flash red, push back, die when health reaches 0
-    takeDamage(amount, attackerPos) {
-      if (this.dead) return;
-      this.health -= amount;
-      // Flash all meshes red for 0.3 seconds as hit feedback
-      this._hitFlash = 0.3;
-      this.mesh.traverse((c) => {
-        if (c.isMesh && c.material && c.material.color) {
-          c.material.color.set(0xff3333);
-        }
-      });
-      // Knockback: push enemy away from attacker for satisfying combat feel
-      if (attackerPos && this.mesh) {
-        const pushDir = new THREE.Vector3()
-          .copy(this.mesh.position)
-          .sub(attackerPos);
-        pushDir.y = 0;
-        const len = pushDir.length();
-        if (len > 0.01) {
-          pushDir.normalize().multiplyScalar(2.5);
-          this.mesh.position.x += pushDir.x;
-          this.mesh.position.z += pushDir.z;
-          this._stayInBounds();
-          this.snapToTerrain();
-        }
-      }
-      if (this.health <= 0) {
-        this.dead = true;
-        this.state = "dead";
-        // Switch to fall animation, then remove from scene after clip finishes
-        this._setAnim("fall");
-        const fallClip = this.actions.fall?.getClip();
-        const dur = (fallClip?.duration || 0.6) + 0.2;
-        this._deathTimer = dur;
-      }
-    }
-
-    // Each frame: patrol waypoints, idle at stops, face player when near, avoid buildings
-    update(delta, playerPos) {
-      if (!this.mesh || !this.mixer) return;
-
-      // If dead, count down then remove from scene completely
-      if (this.dead) {
-        this._deathTimer -= delta;
-        this.mixer.update(delta);
-        if (this._deathTimer <= 0 && this.mesh && this.mesh.parent) {
-          this.scene.remove(this.mesh);
-          this.mesh = null;
-        }
-        return;
-      }
-
-      // Gradually restore original material color after hit-flash duration expires
-      if (this._hitFlash > 0) {
-        this._hitFlash -= delta;
-        if (this._hitFlash <= 0) {
-          this.mesh.traverse((c) => {
-            if (c.isMesh && c.material && c.material.color) {
-              const hue = parseFloat(c.userData._hue) || 0;
-              c.material.color.setHSL(hue, 0.5, 0.4);
-            }
-          });
-        }
-      }
-
-      // Skip every 5 out of 6 frames for far-away enemies (performance optimization)
-      this._skipCounter = (this._skipCounter + 1) % 6;
-      const skipFrame = this._skipCounter !== 0;
-
-      const dt = Math.min(delta, 0.1);
-      const pos = this.mesh.position;
-
-      // Compute distance to player for AI decision-making
-      const toPlayer = this._toTarget.copy(playerPos).sub(pos);
-      toPlayer.y = 0;
-      const playerDist = toPlayer.length();
-
-      // Far away + skip frame: only update animation mixer, skip AI logic
-      if (skipFrame && playerDist > ENEMY_PLAYER_DETECT * 2) {
-        this.mixer.update(dt);
-        return;
-      }
-
-      this.idleCountdown -= dt;
-
-      // IDLE state: stand still, face player if close, transition to walk
-      if (this.state === "idle") {
-        this._setAnim("walk");
-        if (playerDist < ENEMY_PLAYER_DETECT) {
-          // Smoothly rotate to face player
-          const lookAngle = Math.atan2(toPlayer.x, toPlayer.z);
-          let dy = lookAngle - this.lookYaw;
-          while (dy > Math.PI) dy -= Math.PI * 2;
-          while (dy < -Math.PI) dy += Math.PI * 2;
-          this.lookYaw += THREE.MathUtils.clamp(dy, -6 * dt, 6 * dt);
-          this.mesh.rotation.y = this.lookYaw;
-        }
-        if (this.idleCountdown <= 0) {
-          this.state = "walk";
-          this.currentWaypoint =
-            (this.currentWaypoint + 1) % this.waypoints.length;
-          this.idleCountdown = this.idleTimer;
-        }
-        this.mixer.update(dt);
-        return;
-      }
-
-      // WALK state: move toward waypoint or toward player when detected
-      if (this.state === "walk") {
-        let dir;
-        let speed = this.speed;
-
-        // Player detected: move toward player at half speed
-        if (playerDist < ENEMY_PLAYER_DETECT) {
-          dir = this._dir.copy(toPlayer).normalize();
-          speed = this.speed * 0.5;
-        } else {
-          // No player: follow waypoint patrol route
-          const target = this.waypoints[this.currentWaypoint];
-          this._toTarget.copy(target).sub(pos);
-          this._toTarget.y = 0;
-          const dist = this._toTarget.length();
-
-          // Close enough to waypoint → switch to idle
-          if (dist < 2) {
-            this.state = "idle";
-            this.idleCountdown = 1 + Math.random() * 3;
-            this.mixer.update(dt);
-            return;
-          }
-          dir = this._dir.copy(this._toTarget).normalize();
-        }
-
-        const prevX = pos.x;
-        const prevZ = pos.z;
-        pos.x += dir.x * speed * dt;
-        pos.z += dir.z * speed * dt;
-
-        // Keep minimum distance from player (don't overlap/push them)
-        const toPlayerDist = Math.hypot(playerPos.x - pos.x, playerPos.z - pos.z);
-        if (toPlayerDist < 1.5) {
-          pos.x = prevX;
-          pos.z = prevZ;
-        }
-
-        // If new position is inside a building, revert and try next waypoint
-        if (isNearBuilding(pos.x, pos.z)) {
-          pos.x = prevX;
-          pos.z = prevZ;
-          this._stuckFrames++;
-          if (this._stuckFrames > 2) {
-            this.currentWaypoint =
-              (this.currentWaypoint + 1) % this.waypoints.length;
-            this._stuckFrames = 0;
-          }
-        } else {
-          this._stuckFrames = 0;
-        }
-
-        // Clamp position to world boundary
-        this._stayInBounds();
-
-        // Smoothly rotate to face movement direction
-        const targetYaw = Math.atan2(dir.x, dir.z);
-        let dy = targetYaw - this.lookYaw;
-        while (dy > Math.PI) dy -= Math.PI * 2;
-        while (dy < -Math.PI) dy += Math.PI * 2;
-        this.lookYaw += THREE.MathUtils.clamp(dy, -8 * dt, 8 * dt);
-        this.mesh.rotation.y = this.lookYaw;
-      }
-
-      this.mixer.update(dt);
-    }
-
-    snapToTerrain() {
-      if (!this.mesh) return;
-      const groundY = shared.terrainGround?.heightAt(this.mesh.position.x, this.mesh.position.z) ?? 0;
-      this.mesh.position.y = groundY + this.footOffset;
-    }
-
-    // Keep enemies within the terrain's actual footprint.
-    _stayInBounds() {
-      const bounds = shared.terrainGround?.bounds;
-      this.mesh.position.x = Math.max(
-        (bounds?.min.x ?? -100) + 0.5,
-        Math.min((bounds?.max.x ?? 100) - 0.5, this.mesh.position.x),
-      );
-      this.mesh.position.z = Math.max(
-        (bounds?.min.z ?? -100) + 0.5,
-        Math.min((bounds?.max.z ?? 100) - 0.5, this.mesh.position.z),
-      );
-    }
-  }
-
-  // Pre-cache building collision data for all enemies to share
-  cacheBuildingSpheres(scene);
-  const enemies = [];
-  const spawnPoints = [];
-
-  // Generate 15 random spawn points in a ring (5–55 units from center)
-  for (let i = 0; i < ENEMY_COUNT; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 5 + Math.random() * 50;
-    spawnPoints.push(
-      new THREE.Vector3(Math.cos(angle) * dist, 0, Math.sin(angle) * dist),
-    );
-  }
-
-  const loadPromises = spawnPoints.map(async (pos) => {
-    const enemy = new EnemyNPC(scene, pos);
-    try {
-      await enemy.load();
-      return enemy;
-    } catch (e) {
-      console.warn("[enemy] Failed to load:", e);
-      return null;
-    }
-  });
-
-  const results = await Promise.all(loadPromises);
-  for (const e of results) {
-    if (e) enemies.push(e);
-  }
-
-  shared.enemies = enemies;
-
-  // Every frame: feed current player position to every enemy for AI behavior
-  addPreviewFn((delta) => {
-    const player = shared.player;
-    const playerPos = player ? player.position : new THREE.Vector3(0, 0, 0);
-    for (const e of enemies) {
-      e.update(delta, playerPos);
-      if (e.mesh) {
-        e._stayInBounds();
-        e.snapToTerrain();
-      }
-    }
-  }, 50);
-}
-
-function step11_enemyCombat() {
-  const ATTACK_RANGE = 3;
-  const ATTACK_ANGLE = Math.PI / 3; // 60-degree cone in front of player
-  const ATTACK_DAMAGE = 1;
-  let _mouseClicked = false;
-
-  // Listen for left-click on canvas
-  const canvas = document.querySelector("#game-canvas");
-  canvas.addEventListener("click", () => {
-    if (document.pointerLockElement === canvas) _mouseClicked = true;
-  });
-
-  // Shared attack logic: find closest enemy in attack cone and damage it
-  function doAttack() {
-    const { player, enemies } = shared;
-    if (!player || !enemies) return;
-    // Trigger player's own hit animation as the attack swing
-    _loopShared.hit = true;
-
-    const playerPos = player.position;
-    // Compute forward vector from player's current rotation
-    const facing = new THREE.Vector3(0, 0, 1).applyQuaternion(
-      player.quaternion,
-    );
-    facing.y = 0;
-    facing.normalize();
-
-    let closest = null;
-    let closestDist = ATTACK_RANGE;
-
-    // Scan all living enemies within range and inside a 60° attack cone
-    for (const e of enemies) {
-      if (e.dead || !e.mesh) continue;
-      const toEnemy = new THREE.Vector3().copy(e.mesh.position).sub(playerPos);
-      toEnemy.y = 0;
-      const dist = toEnemy.length();
-      if (dist > ATTACK_RANGE) continue;
-      const angle = facing.angleTo(toEnemy);
-      if (angle > ATTACK_ANGLE) continue;
-      // Track closest enemy within cone
-      if (dist < closestDist) {
-        closestDist = dist;
-        closest = e;
-      }
-    }
-
-    if (closest) {
-      closest.takeDamage(ATTACK_DAMAGE, playerPos);
-    }
-  }
-
-  // Every frame: check E key or left-click to trigger attack
-  addPreviewFn(() => {
-    const { keyboard } = shared;
-    if (!keyboard) return;
-
-    // E key fires one attack per press (uses justPressed to avoid holding)
-    if (keyboard.consumeJustPressed("KeyE")) doAttack();
-
-    // Left-click also attacks (consumed flag to prevent multi-fire)
-    if (_mouseClicked) {
-      _mouseClicked = false;
-      doAttack();
-    }
-  }, 55);
-}
 async function main() {
   // step 1
   await step1_sceneSetup();
@@ -1288,6 +833,8 @@ async function main() {
     .catch((error) => console.error("OrangeBOT could not load:", error));
   // step 2
   await step2_city();
+  await loadSpaceBase();
+  await loadGardenColony();
 
   // step 3
   await step3_cityMovement();
@@ -1310,11 +857,195 @@ async function main() {
   // step 9
   await step9_collision();
 
-  // step 10
-  await step10_enemies();
-
-  // step 11
-  await step11_enemyCombat();
+  // Place the camera and characters once before the first playable frame.
+  for (const fn of _previewFns) fn(0);
+  session.ready = true;
+  gameMenu.status("");
+  gameMenu.render();
 }
 
-main();
+function clearGameInput() {
+  if (shared.keyboard) shared.keyboard._bl();
+  _loopShared.move.set(0, 0, 0);
+  _loopShared.hit = false;
+}
+
+function pauseGame() {
+  gameMenu.cancelTransition();
+  session.pause();
+  clearGameInput();
+  if (document.pointerLockElement) document.exitPointerLock();
+  gameMenu.render();
+}
+
+function requestPlay() {
+  if (!session.ready || !shared.renderer || gameMenu.transitioning) return;
+  clearGameInput();
+  gameMenu.status("");
+  try {
+    const request = shared.renderer.domElement.requestPointerLock();
+    request?.catch(() => gameMenu.status("Mouse capture was declined. Click Start or Resume to try again."));
+  } catch {
+    gameMenu.status("Mouse capture is unavailable. Click Start or Resume to try again.");
+  }
+}
+
+function navigateMenu(target) {
+  if (shared.stateMachine?.preview) shared.stateMachine.setPreview("");
+  clearGameInput();
+  if (target === "home") session.home();
+  else if (target === "back") session.back();
+  else session.open(target);
+  gameMenu.render();
+}
+
+function moveBaseHere() {
+  if (session.screen !== "paused" || !shared.player || !shared.spaceBase) return;
+  try {
+    if (shared.colony) {
+      const currentSpawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, null).position;
+      const candidate = shared.spaceBase.userData.foundationBounds.clone().translate(new THREE.Vector3(
+        shared.player.position.x - currentSpawn.x, 0, shared.player.position.z - currentSpawn.z));
+      const garden = shared.colony.bounds;
+      if (candidate.max.x > garden.min.x && candidate.min.x < garden.max.x
+        && candidate.max.z > garden.min.z && candidate.min.z < garden.max.z) {
+        gameMenu.status("Choose a spot outside the garden colony to move the base.");
+        return;
+      }
+    }
+    const spawn = relocateSpaceBase(shared.spaceBase, shared.terrainGround,
+      shared.player.position.x, shared.player.position.z);
+    shared.player.position.copy(spawn);
+    shared.player.position.y += shared.playerFootOffset;
+    shared.player.rotation.y = Math.PI;
+    shared.playerState.velocity.set(0, 0, 0);
+    shared.playerState.grounded = true;
+    shared.playerState.groundY = spawn.y;
+    shared.look.yaw = 0;
+    _loopShared.prevPlayerPos = shared.player.position.clone();
+    _loopShared.smoothInited = false;
+    clearGameInput();
+    try {
+      localStorage.setItem(BASE_SPAWN_STORAGE_KEY, JSON.stringify({ x: spawn.x, z: spawn.z }));
+      localStorage.removeItem(PLAYER_SPAWN_STORAGE_KEY);
+      gameMenu.status("Base moved here. Spawn saved for this level.");
+    } catch {
+      gameMenu.status("Base moved here. Browser storage is unavailable, so this location will reset on reload.");
+    }
+  } catch (error) {
+    gameMenu.status(error.message);
+  }
+}
+
+function moveColonyHere() {
+  if (session.screen !== "paused" || !shared.player || !shared.colonyModels) return;
+  const location = { x: shared.player.position.x, z: shared.player.position.z };
+  let next;
+  try {
+    next = buildGardenColony({ ...shared.colonyModels, ground: shared.terrainGround,
+      baseBounds: new THREE.Box3().setFromObject(shared.spaceBase), location });
+  } catch (error) {
+    gameMenu.status(error.message);
+    return;
+  }
+  const previous = shared.colony;
+  for (let i = 0; i < next.plots.length; i++) next.plots[i].growth = previous.plots[i].growth;
+  next.update(0);
+  shared.colonyInteraction.destroy();
+  shared.scene.remove(previous.group);
+  previous.dispose();
+  shared.colony = next;
+  shared.scene.add(next.group);
+  shared.colonyInteraction = createColonyInteraction(next);
+  shared.playerState.velocity.set(0, 0, 0);
+  shared.playerState.grounded = true;
+  shared.playerState.groundY = worldGroundHeight(location.x, location.z);
+  shared.player.position.y = shared.playerState.groundY + shared.playerFootOffset;
+  _loopShared.prevPlayerPos = shared.player.position.clone();
+  _loopShared.smoothInited = false;
+  clearGameInput();
+  try {
+    localStorage.setItem(COLONY_STORAGE_KEY, JSON.stringify(location));
+    gameMenu.status("Garden colony moved here and saved for this level.");
+  } catch {
+    gameMenu.status("Colony moved here. Browser storage is unavailable, so it will reset on reload.");
+  }
+}
+
+function setSpawnHere() {
+  if (session.screen !== "paused" || !shared.player || !shared.spaceBase) return;
+  const saved = {
+    x: shared.player.position.x,
+    z: shared.player.position.z,
+    yaw: shared.player.rotation.y,
+    cameraYaw: shared.look.yaw,
+  };
+  if (!getPlayerSpawn(shared.spaceBase, shared.terrainGround, saved).custom) {
+    gameMenu.status("Step away from the building or terrain edge before setting the spawn.");
+    return;
+  }
+  try {
+    localStorage.setItem(PLAYER_SPAWN_STORAGE_KEY, JSON.stringify(saved));
+    gameMenu.status("Player spawn saved here for this level. The base stays in place.");
+  } catch {
+    gameMenu.status("The spawn could not be saved because browser storage is unavailable.");
+  }
+}
+
+const gameMenu = createGameMenu({
+  session,
+  clips: ASTRONAUT_CLIPS,
+  onPlay: requestPlay,
+  onPause: pauseGame,
+  onNavigate: navigateMenu,
+  onPreview: name => shared.stateMachine?.setPreview(name),
+  onMoveBase: moveBaseHere,
+  onSetSpawn: setSpawnHere,
+  onMoveColony: moveColonyHere,
+});
+gameMenu.render({ focus: false });
+
+document.addEventListener("pointerlockchange", () => {
+  if (shared.renderer && document.pointerLockElement === shared.renderer.domElement) {
+    if (shared.stateMachine?.preview) shared.stateMachine.setPreview("");
+    clearGameInput();
+    const startGame = () => {
+      session.play();
+      gameMenu.render();
+      shared.renderer.domElement.focus();
+    };
+    if (session.screen === "home") {
+      gameMenu.transitionToGame(startGame).catch(error => {
+        console.error("[menu] Screen transition failed:", error);
+        if (document.pointerLockElement) document.exitPointerLock();
+        gameMenu.status("Could not start the transition. Click Start to try again.");
+      });
+      return;
+    }
+    startGame();
+  } else {
+    gameMenu.cancelTransition();
+    session.pause();
+    clearGameInput();
+  }
+  gameMenu.render();
+});
+document.addEventListener("pointerlockerror", () => {
+  gameMenu.cancelTransition();
+  session.pause();
+  gameMenu.render();
+  gameMenu.status("Mouse capture was declined. Click Start or Resume to try again.");
+});
+window.addEventListener("keydown", event => {
+  if (event.code !== "KeyP" || event.repeat || ["SELECT", "INPUT", "TEXTAREA"].includes(event.target.tagName)) return;
+  if (!session.paused) pauseGame();
+  else if (session.screen === "paused") requestPlay();
+});
+window.addEventListener("blur", () => {
+  if (!session.paused) pauseGame();
+});
+
+main().catch(error => {
+  console.error("[game] Failed to initialize:", error);
+  gameMenu.status("The world could not load. Refresh to try again.");
+});

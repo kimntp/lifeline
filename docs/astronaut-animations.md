@@ -23,9 +23,9 @@ are exact, including spelling and accents.
 | `Armação\|Idle` | 1.208 | Stationary / airborne loop |
 | `Armação\|0TPose.007` | 0.042 | Reference pose preview |
 
-Press Esc to release the mouse, then use the astronaut animation selector in
-the top right to play any clip. Click the scene to resume automatic gameplay.
-One-shot previews hold their final frame; select Gameplay or another clip to exit.
+Press Esc or P to pause, then choose Animation previews to play any clip.
+One-shot previews hold their final frame. Choose Back, then Resume to continue
+automatic gameplay. The rest of the world stays paused during a preview.
 These previews play animations only; collection, pistol and death gameplay
 mechanics are not added. Jump physics remain active; the file contains no named
 jump, fall or hit animations. The native mining swing is reused for attacks.

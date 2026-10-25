@@ -24,92 +24,229 @@ body {
   outline: none;
 }
 
-/* ---------- CLICK-TO-PLAY OVERLAY ---------- */
-#click-to-play {
+/* ---------- HOME AND PAUSE MENUS ---------- */
+.colony-location {
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  max-width: min(380px, calc(100vw - 180px));
+  z-index: 10;
+  color: #f5f4ef;
+  text-shadow: 0 2px 8px #000;
+  pointer-events: none;
+}
+.colony-eyebrow { color: #b5e6a5; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+.colony-location h2 { font-size: clamp(1rem, 2vw, 1.2rem); margin: 6px 0; font-weight: 500; }
+#colony-distance { font-size: 0.8rem; color: #d4ddcf; line-height: 1.5; }
+.colony-talk-prompt { position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%); z-index: 12; padding: 12px 20px; border: 1px solid #819b76; border-radius: 8px; color: #edffe8; background: rgba(14, 25, 18, 0.9); pointer-events: none; white-space: nowrap; }
+.colony-dialogue { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 12; width: min(640px, calc(100vw - 32px)); padding: 24px; color: #f0f5ed; background: rgba(12, 20, 18, 0.95); border: 1px solid #6a8560; border-radius: 12px; pointer-events: none; }
+#colony-dialogue-text { margin: 12px 0; font-size: 1rem; line-height: 1.65; }
+.colony-dialogue-hint { font-size: 0.75rem; color: #a9bca2; }
+
+#screen-fade {
   position: fixed;
   inset: 0;
+  z-index: 100;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+
+[hidden] { display: none !important; }
+
+button, select { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: 0.5; }
+button:focus-visible, select:focus-visible {
+  outline: 2px solid #ffbd75;
+  outline-offset: 4px;
+}
+
+.menu-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(4px);
-  cursor: pointer;
-  z-index: 10;
-  user-select: none;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgba(3, 4, 10, 0.72);
+  backdrop-filter: blur(8px);
+  color: #f5f4ef;
 }
 
-#click-to-play .overlay-inner {
-  text-align: center;
-  color: #fff;
-  padding: 2rem 3rem;
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(20, 20, 30, 0.85), rgba(10, 10, 20, 0.85));
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-}
-
-#click-to-play h1 {
-  font-size: 2.2rem;
-  font-weight: 700;
-  margin-bottom: 1.2rem;
-  letter-spacing: 0.5px;
-  background: linear-gradient(90deg, #ff8a00, #ffd000);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-#click-to-play p {
-  font-size: 1rem;
-  margin: 0.4rem 0;
-  color: #cfd2da;
-}
-
-#click-to-play strong {
-  color: #fff;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.08);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.9em;
-}
-
-/* ---------- STEP LABELS (demo walkthrough) ---------- */
-#astronaut-animations {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 11;
-  max-width: min(340px, calc(100vw - 32px));
-  padding: 16px;
-  border-radius: 8px;
-  color: #fff;
-  background: rgba(10, 10, 20, 0.9);
-}
-
-#astronaut-animations label,
-#astronaut-animations select {
-  display: block;
-  width: 100%;
-  margin-bottom: 8px;
-}
-
-#astronaut-animations select {
-  padding: 8px;
-}
-
-#astronaut-animations p {
-  font-size: 0.85rem;
-}
-
-#click-to-play.animation-preview {
-  background: transparent;
+.menu-shell.home-screen {
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: clamp(24px, 4vw, 64px);
+  background: linear-gradient(180deg, rgba(3, 4, 10, 0.3), rgba(3, 4, 10, 0.92)),
+    url("/assets/space-panorama.png") center / cover;
   backdrop-filter: none;
 }
 
-#click-to-play.animation-preview .overlay-inner {
-  display: none;
+.home-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(3, 4, 10, 0.2), rgba(3, 4, 10, 0.78));
+  pointer-events: none;
+}
+
+.menu-card {
+  width: min(100%, 440px);
+  margin: auto;
+  padding: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 20px;
+  background: rgba(10, 12, 19, 0.86);
+  box-shadow: 0 32px 100px rgba(0, 0, 0, 0.4);
+}
+
+.home-screen .menu-card {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 720px);
+  margin: 0 0 0 auto;
+  padding: 0;
+  text-align: right;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.logo-placeholder {
+  display: grid;
+  place-items: center;
+  width: 160px;
+  height: 88px;
+  margin: 0 auto 32px;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
+  color: #b4bbc9;
+  font-size: 0.7rem;
+  letter-spacing: 0.23em;
+}
+
+.menu-eyebrow {
+  color: #ffbd75;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  margin-bottom: 12px;
+}
+
+.menu-card h1 {
+  font-size: clamp(2rem, 6vw, 3.2rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  margin-bottom: 12px;
+}
+
+.home-screen h1 {
+  font-size: clamp(3rem, 8vw, 7rem);
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.65);
+}
+
+.home-screen .logo-placeholder {
+  width: clamp(160px, 28vw, 360px);
+  margin: 0 0 18px auto;
+}
+
+.home-screen .menu-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-top: clamp(24px, 5vh, 56px);
+}
+
+.home-screen .menu-button.primary {
+  width: auto;
+  padding: 10px 0 10px 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #f5f4ef;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  text-align: right;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.8);
+}
+
+.home-screen .menu-button.primary:hover:not(:disabled),
+.home-screen .menu-button.primary:focus-visible {
+  background: transparent;
+  color: #ffcf9c;
+  text-shadow: 0 0 18px rgba(255, 189, 117, 0.6);
+}
+.menu-description { color: #aab1c0; font-size: 0.9rem; line-height: 1.6; }
+.menu-actions { display: grid; gap: 10px; margin-top: 30px; }
+
+.menu-button {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 18px;
+  color: #e9ecf2;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.menu-button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); border-color: #778292; }
+.menu-button.primary { color: #23170c; background: #ffbd75; border-color: #ffbd75; font-weight: 600; }
+.menu-button.primary:hover:not(:disabled) { background: #ffd19e; border-color: #ffd19e; }
+.menu-button.quiet { color: #aab1c0; border-color: transparent; }
+.menu-status { margin-top: 18px; color: #aab1c0; font-size: 0.8rem; line-height: 1.5; }
+.menu-status:empty { display: none; }
+#menu-back { margin-top: 24px; }
+
+.pause-button {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(10, 12, 19, 0.85);
+}
+
+.pause-button:hover { background: #252b37; }
+.pause-button kbd { color: #aab1c0; font-size: 0.75rem; }
+.controls-list { margin-top: 24px; }
+.controls-list div { display: flex; gap: 16px; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.controls-list dt { color: #ffcf9c; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+.controls-list dd { color: #c6ccd7; text-align: right; font-size: 0.85rem; }
+#animation-menu-panel label { display: block; margin: 24px 0 10px; color: #c6ccd7; font-size: 0.85rem; }
+#astronaut-animation { width: 100%; padding: 12px; border-radius: 6px; background: #151a24; color: #fff; border: 1px solid #454e60; margin-bottom: 12px; }
+.menu-shell.preview-screen { background: transparent; backdrop-filter: none; justify-content: flex-start; align-items: flex-end; }
+.preview-screen .menu-card { margin: auto 0 0; max-width: 340px; }
+
+@media (max-width: 520px) {
+  .menu-shell { padding: 16px; }
+  .menu-card { padding: 26px; }
+  .pause-button { top: 12px; right: 12px; }
+  .controls-list div { gap: 10px; }
 }
 
 .step-label {
