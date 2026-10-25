@@ -23,7 +23,7 @@ export const DIRECT_ALIEN_DIALOGUE = voiced([
   { speaker: "Apollo · damaged link", text: "[Translation filter offline. Direct channel established.]" },
   { speaker: "Downed gray alien", emotional: true, text: "You heard me before he changed my words. Now you know. Will you help us?" },
   { speaker: "You", text: "I'll listen to you. Tell me what you need." },
-  { speaker: "Downed gray alien", emotional: true, text: "Be our lifeline." },
+  { speaker: "Downed gray alien", emotional: true, text: "Be our Lifeline." },
 ]);
 export const AFTERMATH_DIALOGUE = {
   pain: { speaker: "Downed gray alien - Unfiltered voice", voiceSpeaker: "Gray colonist", emotional: true, text: ALIEN_PAIN_LINE, speechText: `[crying] [strained] ${ALIEN_PAIN_LINE}` },

@@ -1,3 +1,4 @@
+import { renderDialogueText } from "./dialogue-text.mjs";
 import { buildScriptCues, progressiveCaptionAtTime, groupCaptionPages } from "./caption-timing.mjs";
 
 const activeCaptions = new WeakMap();
@@ -35,7 +36,7 @@ export function attachNarrationCaptions(audio, url, target = null) {
     const previousCue = cues.findLast(cue => cue.start <= audio.currentTime);
     const text = forced ? fullText : started && !audio.ended
       ? progressiveCaptionAtTime(cues, audio.currentTime) || previousCue?.text || "" : "";
-    if (line.textContent !== text) line.textContent = text;
+    renderDialogueText(line, text);
     if (!target) box.hidden = !text;
   };
   const tick = () => {

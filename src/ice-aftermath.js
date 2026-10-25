@@ -1,3 +1,4 @@
+import { renderDialogueText } from "./dialogue-text.mjs";
 import { attachDialogueText } from "./narration-captions.js";
 import * as THREE from "three";
 import { createDialogueDubbing } from "./alien-dubbing.js";
@@ -41,7 +42,7 @@ export function createIceAftermath({ alien, player, scene, camera, ground, obsta
     onChange: ({ status }) => {
       if (["finished", "error", "completed"].includes(status)) {
         const entry = phase() === "dialogue" ? DIRECT_ALIEN_DIALOGUE[dialogueLine] : AFTERMATH_DIALOGUE[phase()];
-        line.textContent = entry.text;
+        renderDialogueText(line, entry.text);
       }
     },
   });
@@ -55,7 +56,7 @@ export function createIceAftermath({ alien, player, scene, camera, ground, obsta
     button.textContent = p === "dialogue" ? "Enter / E - Continue | Enter - Skip voice" : "Sequence playing... | Enter - Skip voice";
     stopSpeech();
     const entry = p === "dialogue" ? DIRECT_ALIEN_DIALOGUE[dialogueLine] : AFTERMATH_DIALOGUE[p];
-    speaker.textContent = entry.speaker; line.textContent = entry.voiceSpeaker ? "" : entry.text;
+    speaker.textContent = entry.speaker; renderDialogueText(line, entry.voiceSpeaker ? "" : entry.text);
     root.classList?.toggle("apollo-dialogue", entry.speaker.startsWith("Apollo"));
     pendingSpeech = entry.voiceSpeaker ? entry : null;
     link.textContent = ["glitch", "dialogue"].includes(p) ? p === "glitch"
@@ -71,7 +72,7 @@ export function createIceAftermath({ alien, player, scene, camera, ground, obsta
     if (root.hidden || event.repeat) return;
     if (["Enter", "NumpadEnter"].includes(event.code)) {
       event.preventDefault();
-      if (pendingSpeech) { line.textContent = pendingSpeech.text; pendingSpeech = null; }
+      if (pendingSpeech) { renderDialogueText(line, pendingSpeech.text); pendingSpeech = null; }
       else if (dubbing.busy) dubbing.complete();
       else continueScene();
     } else if (event.code === "KeyE") continueScene();

@@ -1,3 +1,4 @@
+import { renderDialogueText } from "./dialogue-text.mjs";
 import { attachDialogueText } from "./narration-captions.js";
 import * as THREE from "three";
 import { DIRECT_ALIEN_DIALOGUE, RECOGNITION_DIALOGUE, TASK_DIALOGUE } from "./ice-dialogue.mjs";
@@ -29,7 +30,7 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
   const dubbing = dubbingFactory({ owner,
     onAudio: (audio, entry) => attachDialogueText(audio, entry, { box: element("ice-dialogue"), speaker: element("ice-speaker"), line: element("ice-line") }),
     onChange: ({ busy, status }) => {
-    if (["finished", "error", "completed"].includes(status) && conversation) element("ice-line").textContent = lines[line].text;
+    if (["finished", "error", "completed"].includes(status) && conversation) renderDialogueText(element("ice-line"), lines[line].text);
     element("ice-dialogue-hint").textContent = busy
       ? "Speaking... Enter - Skip voice | Walk away to leave"
       : "Enter / E - Continue | Walk away to leave";
@@ -62,7 +63,7 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
     element("ice-dialogue").hidden = false;
     element("ice-speaker").textContent = entry.speaker;
     element("ice-dialogue").classList?.toggle("apollo-dialogue", entry.speaker.startsWith("Apollo") || entry.speaker.startsWith("You"));
-    element("ice-line").textContent = (entry.voiceSpeaker && !entry.text.startsWith("[")) || entry.innerThought ? "" : entry.text;
+    renderDialogueText(element("ice-line"), (entry.voiceSpeaker && !entry.text.startsWith("[")) || entry.innerThought ? "" : entry.text);
     if (entry.voiceSpeaker) void dubbing.start(entry, entry.voiceSpeaker);
     if (entry.tasks) encounter.assignTasks();
   }
@@ -94,7 +95,7 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
     handleSkip() {
       if (!conversation || root.hidden) return false;
       if (dubbing.busy) dubbing.complete();
-      else if (lines[line]?.innerThought && !innerRevealed) { innerRevealed = true; element("ice-line").textContent = lines[line].text; }
+      else if (lines[line]?.innerThought && !innerRevealed) { innerRevealed = true; renderDialogueText(element("ice-line"), lines[line].text); }
       else { line++; if (line >= lines.length) close(); else show(); }
       return true;
     },
@@ -118,7 +119,7 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
       if (keyboard?.consumeJustPressed("KeyE") && !blocked) {
         if (conversation) {
           if (dubbing.busy) return;
-          if (lines[line]?.innerThought && !innerRevealed) { innerRevealed = true; element("ice-line").textContent = lines[line].text; return; }
+          if (lines[line]?.innerThought && !innerRevealed) { innerRevealed = true; renderDialogueText(element("ice-line"), lines[line].text); return; }
           line++;
           if (line >= lines.length) close(); else show();
         } else if (sample) {

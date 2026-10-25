@@ -828,3 +828,5 @@ body.apollo-glitch .ice-aftermath { border-color: #bf83b5; }
 .rest-eyelids { border-block: 25vh solid rgba(0, 0, 0, .9); clip-path: inset(25% 0); }
 .rest-blackout { background: #000; opacity: 0; z-index: 9; }
 .base-rest .dialogue-box { z-index: 6; }
+
+.dialogue-highlight { color: #d5b9f5; font-weight: 700; }
