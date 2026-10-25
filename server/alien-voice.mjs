@@ -28,11 +28,11 @@ function apolloScript() {
       mission.learnGrowth(); remember(mission);
       if (water) { mission.learnWater({ x: 0, z: 0 }); remember(mission); }
       for (const [index, sample] of ["soil", "tomato", "wheat"].entries()) {
-        if (mask & (1 << index)) { mission.collect(sample); remember(mission); }
+        if (mask & (1 << index)) { mission.collect(sample, "shovel"); remember(mission); }
       }
       for (const sample of ["soil", "tomato", "wheat"]) {
         const next = new GardenMission(mission.serialize());
-        next.collect(sample); remember(next);
+        next.collect(sample, "shovel"); remember(next);
       }
       if (mission.beginDeposit()) {
         mission.cancelDeposit(); remember(mission);

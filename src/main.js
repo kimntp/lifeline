@@ -5,6 +5,7 @@ import * as THREE from "three"; // Core 3D engine
 import { createOrangeBotOverlay } from "./orangebot-overlay.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"; // Load .glb city model
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { applyAstronautSuit } from "./astronaut-suit.js";
 import { ASTRONAUT_CLIPS, AstronautAnimator } from "./astronaut-animations.js";
 import { TerrainGround, advanceGroundedActor, measureFootOffset } from "./terrain-ground.js";
 import { createTerrainSurround } from "./terrain-surround.js";
@@ -19,9 +20,11 @@ import { createSampleStation } from "./sample-station.js";
 import { createColonyInterference } from "./colony-interference.js";
 import { IceEncounter, equipTaserBaton, equipMiningPick } from "./ice-encounter.js";
 import { createIceInteraction } from "./ice-interaction.js";
+import { createSurveyMontage } from "./survey-montage.js";
 import { createIceAftermath } from "./ice-aftermath.js";
 import { dialogueSession } from "./dialogue-session.js";
 
+import { createPlayerInventory, equipShovel } from "./player-inventory.js";
 import { LEVEL_LAYOUT } from "./level-layout.js";
 
 const session = new GameSession();
@@ -43,7 +46,10 @@ const shared = {
   iceInteraction: null,
   baton: null,
   pickaxe: null,
-  selectedTool: "baton",
+  shovel: null,
+  inventoryUI: null,
+  surveyMontage: null,
+  selectedTool: "none",
   batonRequested: false,
   interference: null,
   colony: null,
@@ -75,6 +81,7 @@ function worldGroundHeight(x, z) {
 }
 
 function updateWorldProgression() {
+  if (shared.shovel) shared.shovel.visible = shared.selectedTool === "shovel";
   if (shared.baton) shared.baton.visible = gardenMission.completed && shared.selectedTool === "baton";
   if (shared.pickaxe) shared.pickaxe.visible = gardenMission.completed && shared.selectedTool === "pickaxe";
   if (shared.iceBase) shared.iceBase.group.visible = gardenMission.completed;
@@ -166,7 +173,7 @@ function startPreview() {
 
     // Execute every registered per-frame feature callback in sequence
     if (shared.sampleStation) shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission, shared.colony?.bounds);
-    if (!session.paused && !flags.missionTransition && !shared.iceAftermath) {
+    if (!session.paused && !flags.missionTransition && !shared.iceAftermath && !shared.surveyMontage) {
       for (const fn of _previewFns) fn(delta);
     } else if (!flags.missionTransition && session.screen === "animations" && shared.stateMachine?.preview) {
       // Only the selected preview animates; gameplay remains frozen.
@@ -174,17 +181,20 @@ function startPreview() {
     }
 
     shared.iceAftermath?.update(delta, !session.paused && !gameMenu.transitioning);
+    shared.surveyMontage?.update(delta, !session.paused && !gameMenu.transitioning, shared.camera?.aspect);
 
     // Final render pass — draw everything to the canvas
     updateWorldProgression();
-    apolloNarrator?.setPaused(session.paused || flags.missionTransition);
+    shared.inventoryUI?.update({ visible: !session.paused && !flags.missionTransition && !shared.iceAftermath && !shared.surveyMontage && !dialogueSession.busy,
+      selected: shared.selectedTool, combatUnlocked: gardenMission.completed });
+    apolloNarrator?.setPaused(session.paused || flags.missionTransition || Boolean(shared.surveyMontage));
     apolloNarrator?.update();
-    updatePlayerVitals?.(!session.paused);
+    updatePlayerVitals?.(!session.paused && !shared.surveyMontage);
     shared.colonyInteraction?.setVisible(!session.paused && !gardenMission.completed);
-    shared.iceInteraction?.setVisible(!session.paused && gardenMission.completed && !shared.iceAftermath && !flags.missionTransition);
+    shared.iceInteraction?.setVisible(!session.paused && gardenMission.completed && !shared.iceAftermath && !shared.surveyMontage && !flags.missionTransition);
     const { scene, renderer, camera } = shared;
     if (scene && renderer && camera) {
-      renderer.render(scene, camera);
+      renderer.render(shared.surveyMontage?.scene ?? scene, shared.surveyMontage?.camera ?? camera);
     }
 
     _previewId = requestAnimationFrame(loop);
@@ -351,6 +361,7 @@ function createSurveyInteraction(colony) {
   return createColonyInteraction(colony, {
     mission: gardenMission,
     onApolloMessage: text => apolloNarrator?.say(text),
+    getTool: () => shared.selectedTool,
     onSample: () => { _loopShared.hit = true; },
     onDeposit: depositSurveySamples,
     getBaseTarget: () => shared.sampleStation?.target,
@@ -378,10 +389,14 @@ async function loadGardenColony() {
   addPreviewFn(delta => {
     if (shared.keyboard?.consumeJustPressed("Digit1")) selectPlayerTool("baton");
     if (shared.keyboard?.consumeJustPressed("Digit2")) selectPlayerTool("pickaxe");
+    if (shared.keyboard?.consumeJustPressed("Digit3")) selectPlayerTool("shovel");
     if (shared.batonRequested) {
       shared.batonRequested = false;
       if (shared.selectedTool === "baton" && shared.player && atIceColony(shared.player.position)) shared.iceInteraction?.prepareStrike();
-      if (!dialogueSession.busy && shared.player && gardenMission.completed) {
+      if (!dialogueSession.busy && shared.player && shared.selectedTool === "shovel" && !gardenMission.completed) {
+        shared.colonyInteraction.dig(shared.player);
+      }
+      if (!dialogueSession.busy && shared.player && gardenMission.completed && shared.selectedTool !== "shovel") {
         _loopShared.hit = true;
         const forward = new THREE.Vector3(-Math.sin(shared.look.yaw), 0, -Math.cos(shared.look.yaw));
         shared.player.rotation.y = Math.atan2(forward.x, forward.z);
@@ -402,7 +417,7 @@ function updateColonyInteraction(delta) {
     if (shared.iceEncounter.phase === "complete" && !shared.iceEncounter.aftermathPlayed) void playIceAftermath();
   } else {
     shared.iceInteraction?.leave();
-    shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
+    shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw, delta);
   }
 }
 
@@ -537,17 +552,7 @@ async function step4_player() {
   // Ground placement is measured after the initial native idle pose is applied.
   enableShadowsRecursive(player);
 
-  // Walk all meshes: recolor pitch-black materials to skin tone, enable shadows
-  player.traverse((c) => {
-    if (c.isMesh && c.material) {
-      (Array.isArray(c.material) ? c.material : [c.material]).forEach((m) => {
-        // Pure black (0x000000) likely means missing texture — swap to a visible color
-        if (m.color && m.color.getHex() === 0x000000) m.color.set(0xccbbaa);
-      });
-      c.castShadow = true;
-      c.receiveShadow = true;
-    }
-  });
+  applyAstronautSuit(player, "white");
 
   const spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, LEVEL_LAYOUT.spawn);
   player.position.copy(spawn.position);
@@ -580,6 +585,8 @@ async function step5_animations() {
   shared.baton.visible = false;
   shared.pickaxe = equipMiningPick(shared.player, true);
   shared.pickaxe.visible = false;
+  shared.shovel = equipShovel(shared.player);
+  shared.inventoryUI = createPlayerInventory(selectPlayerTool);
 
   // Every frame: feed player state into the state machine to pick current animation
   addPreviewFn((delta) => {
@@ -994,7 +1001,7 @@ async function placeIceBase(location) {
       iceBase: next, onPlayerDown: recoverPlayerAtBase });
     shared.iceEncounter.group.visible = gardenMission.completed;
     shared.scene.add(shared.iceEncounter.group);
-    shared.iceInteraction = createIceInteraction(shared.iceEncounter, { onComplete: playIceAftermath, getTool: () => shared.selectedTool, onSelectTool: selectPlayerTool });
+    shared.iceInteraction = createIceInteraction(shared.iceEncounter, { onComplete: playIceAftermath, getTool: () => shared.selectedTool });
   }
 }
 
@@ -1025,10 +1032,12 @@ async function recoverPlayerAtBase() {
 }
 
 function selectPlayerTool(tool) {
-  if (!gardenMission.completed || dialogueSession.busy || shared.iceAftermath || !["baton", "pickaxe"].includes(tool)) return;
+  if (dialogueSession.busy || flags.missionTransition || shared.iceAftermath || !["baton", "pickaxe", "shovel"].includes(tool)) return;
+  if (tool !== "shovel" && !gardenMission.completed) return;
   shared.selectedTool = tool;
   if (shared.baton) shared.baton.visible = tool === "baton";
   if (shared.pickaxe) shared.pickaxe.visible = tool === "pickaxe";
+  if (shared.shovel) shared.shovel.visible = tool === "shovel";
 }
 
 async function playIceAftermath() {
@@ -1089,13 +1098,33 @@ async function depositSurveySamples() {
         shared.player.position.z + shared.cameraDistance);
       shared.camera.lookAt(shared.player.position.x, shared.player.position.y + 1.2, shared.player.position.z);
       gardenMission.finishDeposit();
+      shared.selectedTool = "baton";
+      if (shared.shovel) shared.shovel.visible = false;
       if (shared.baton) shared.baton.visible = true;
       shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission, shared.colony?.bounds);
       shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
+      shared.colonyInteraction.leave();
+      apolloNarrator?.setPaused(true);
+      shared.surveyMontage = createSurveyMontage({ player: shared.player,
+        alienModels: shared.colonyModels.aliens, cropModel: shared.colonyModels.wheat,
+        tomatoModel: shared.colonyModels.tomato, domeModel: shared.colonyModels.dome,
+        aspect: shared.camera.aspect, reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches });
+      document.body.classList.add("survey-cinematic");
     });
+    flags.missionTransition = false;
+    if (shared.surveyMontage) {
+      await shared.surveyMontage.finished;
+      flags.missionTransition = true;
+      await gameMenu.transitionToGame(() => {
+        shared.surveyMontage.dispose(); shared.surveyMontage = null;
+        document.body.classList.remove("survey-cinematic");
+      });
+    }
   } catch (error) {
     console.error("[survey] Sample deposit transition failed:", error);
   } finally {
+    shared.surveyMontage?.dispose(); shared.surveyMontage = null;
+    document.body.classList.remove("survey-cinematic");
     if (gardenMission.depositing) gardenMission.cancelDeposit();
     shared.colonyInteraction.refresh();
     flags.missionTransition = false;

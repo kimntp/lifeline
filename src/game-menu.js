@@ -73,6 +73,7 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
             <div><dt>Mouse / scroll</dt><dd>Look / zoom</dd></div>
             <div><dt>E</dt><dd>Talk / collect sample / deposit</dd></div>
             <div><dt>1 / 2</dt><dd>Equip taser baton / pickaxe from inventory after waking at base</dd></div>
+            <div><dt>3 · Shovel</dt><dd>Equip the shovel, then left-click or press E near a crop bed to dig a soil sample after speaking with a farmer.</dd></div>
             <div><dt>Left click · baton</dt><dd>One stun puts an alien to sleep. The last alien stays downed and talkable.</dd></div>
             <div><dt>Left click · pickaxe</dt><dd>Face an ice block and strike it three times to mine the ice core. Move close; allow time between swings.</dd></div>
             <div><dt>Q</dt><dd>Open / close objectives</dd></div>

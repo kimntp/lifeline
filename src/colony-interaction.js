@@ -7,7 +7,7 @@ import { GARDEN_COLONY, nearestGardenWorker } from "./garden-colony.js";
 import { GardenMission, GROWING_CONDITIONS, nearestSamplePlot, surveyDialogue } from "./garden-mission.js";
 
 export function createColonyInteraction(colony, { mission = new GardenMission(), onProgress, onSample, onDeposit, onApolloMessage,
-  getBaseTarget = () => null, getFootOffset = () => 0, channel = dialogueSession, speechFactory = createSpeechChallenge, dubbingFactory = createAlienDubbing } = {}) {
+  getTool = () => "none", getBaseTarget = () => null, getFootOffset = () => 0, channel = dialogueSession, speechFactory = createSpeechChallenge, dubbingFactory = createAlienDubbing } = {}) {
   const conversationOwner = {};
   const root = document.createElement("div");
   root.id = "colony-interface";
@@ -49,6 +49,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
   const prompt = element("colony-talk-prompt");
   const dialogue = element("colony-dialogue");
   const distanceLabel = element("colony-distance");
+  let soilHintTime = 0, previousSoil = false, previousTool = "none";
   let conversation = null, lines = [], line = 0, renderedRevision = -1, objectivesOpen = false;
   let objectivesIntroduced = false, surveyIntroduced = mission.explained;
   let visible = false;
@@ -141,7 +142,15 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
     return target && Math.hypot(player.position.x - target.x, player.position.z - target.z) <= 2.5
       && Math.abs(player.position.y - getFootOffset() - target.y) <= 0.6;
   }
+  function dig(player) {
+    if (conversation || channel.isBlocked(conversationOwner) || getTool() !== "shovel") return false;
+    const sample = nearestSamplePlot(colony, player.position, mission, getFootOffset());
+    if (sample?.type !== "soil" || !mission.collect("soil", "shovel")) return false;
+    onSample?.("soil"); onProgress?.(); renderMission();
+    return true;
+  }
   return {
+    dig,
     leave: close,
     destroy() { close(); speech.destroy(); dubbing.destroy(); root.remove(); },
     refresh: renderMission,
@@ -152,7 +161,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
       visible = nextVisible;
       root.hidden = !nextVisible;
     },
-    update(player, keyboard, cameraYaw = 0) {
+    update(player, keyboard, cameraYaw = 0, delta = 0) {
       if (mission.completed) { root.hidden = true; close(); return; }
       if (keyboard?.consumeJustPressed("KeyQ")) toggleObjectives();
       const returning = mission.phase === "return";
@@ -168,6 +177,10 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
       const worker = nearestGardenWorker(colony.workers, player.position);
       const sample = nearestSamplePlot(colony, player.position, mission, getFootOffset());
       const deposit = returning && baseInReach(player);
+      const nearSoil = sample?.type === "soil";
+      if (nearSoil && (!previousSoil || previousTool !== getTool())) soilHintTime = 5;
+      else soilHintTime = Math.max(0, soilHintTime - delta);
+      previousSoil = nearSoil; previousTool = getTool();
       if (conversation && (!conversation.visual.visible
         || Math.hypot(player.position.x - conversation.visual.position.x, player.position.z - conversation.visual.position.z) > 4)) close();
       const blocked = channel.isBlocked(conversationOwner);
@@ -185,7 +198,8 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
         } else if (deposit) {
           onDeposit?.();
         } else if (sample) {
-          if (mission.collect(sample.type)) {
+          if (sample.type === "soil") dig(player);
+          else if (mission.collect(sample.type)) {
             onSample?.(sample.type);
             onProgress?.();
           }
@@ -198,9 +212,10 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
         }
       }
       const nextSample = nearestSamplePlot(colony, player.position, mission, getFootOffset());
-      prompt.hidden = blocked || Boolean(conversation) || mission.phase === "depositing" || (!deposit && !nextSample && !worker);
+      prompt.hidden = blocked || Boolean(conversation) || mission.phase === "depositing" || (!deposit && !nextSample && !worker) || (nextSample?.type === "soil" && soilHintTime <= 0);
       prompt.textContent = deposit ? "E — Deposit samples at base"
-        : nextSample ? `E — ${nextSample.type === "soil" ? "Collect soil sample" : `Take ${nextSample.type} sample`}`
+        : nextSample?.type === "soil" ? (getTool() === "shovel" ? "Left-click / E — Dig soil sample" : "3 — Equip shovel to collect soil")
+        : nextSample ? `E — Take ${nextSample.type} sample`
         : worker ? `E — ${mission.explained && !mission.waterKnown ? "Ask about water" : "Talk"} · ${worker.profile.name}` : "";
       renderMission();
     },

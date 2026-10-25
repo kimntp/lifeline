@@ -34,7 +34,11 @@ Press Q (or use the Q Objectives button) to slide the objectives tab open or
 closed. New surveys initially show only “Talk to one of the aliens.” Sampling
 and water tasks appear after reading the growing-condition explanation.
 Apollo's mission message appears inside the objectives tab.
-2. Near any crop bed, press E to collect a soil sample. Collect a tomato cutting
+2. The separate inventory strip includes a shovel from the start. Press 3 to
+   equip it, then left-click or press E near a crop bed to dig the soil sample.
+   Bare hands and the other tools cannot complete that task. Soil guidance
+   disappears after five gameplay seconds; full controls stay in Instructions.
+   Collect a tomato cutting
    at a tomato bed and a wheat cutting at a wheat bed. Each sample is collected
    once; crops remain alive. Sample prompts take priority over nearby chat.
 3. Talk again to ask about water. Farmers explain that they conserve water but
@@ -81,3 +85,18 @@ placement, blocked dome crossings, full worker work/rest cycles, colony
 boundaries, growth, talk selection, dialogue advancement, and real terrain
 placement for both default and relocated bases. Browser visuals require a
 separate visual check.
+
+After the first sample report commits, a 16-second Colony 1 cutscene plays.
+The first seven seconds show four black-suited astronauts holding batons and
+policing six green aliens forced to tend the tomato and wheat beds. A four-second
+close-up shows a guard striking a farmer with a baton and the farmer recoiling.
+A five-second shot then shows three exhausted farmers collapsing while guards
+keep watch. Guard cloning preserves FBX bone identifiers and refreshes skin
+matrices before measuring height, preventing stretched bodies and floating feet.
+The habitat and crops use Colony 1 assets; no other regions or ice scenes appear.
+The main playable astronaut wears a white suit, using independent materials so
+the guards cannot change the player's appearance. Cinematic clones leave the
+live colony and encounter state intact. Gameplay, HUD and Apollo narration pause;
+P/Esc pauses the cutscene and Enter skips it after its first second. The ending
+fade restores the fixed base spawn with phase two unlocked. Reduced motion
+removes camera drift; clone skeletons, guard materials and listeners are cleaned up.

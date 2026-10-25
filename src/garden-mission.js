@@ -40,8 +40,8 @@ export class GardenMission {
     return this.changed("Alien growing conditions received. With their permission, collect soil, tomato, and wheat samples, then ask about their water supply.");
   }
 
-  collect(type) {
-    if (!this.explained || this.completed || this.depositing || !Object.hasOwn(this.samples, type) || this.samples[type]) return false;
+  collect(type, tool = null) {
+    if (!this.explained || this.completed || this.depositing || !Object.hasOwn(this.samples, type) || this.samples[type] || (type === "soil" && tool !== "shovel")) return false;
     this.samples[type] = true;
     return this.changed(`${SAMPLE_NAMES[type]} sealed and labeled. ${this.inventory.length}/3 samples collected.`);
   }

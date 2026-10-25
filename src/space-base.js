@@ -54,7 +54,7 @@ export function findBaseSite(ground, halfX, halfZ) {
 }
 
 export function placeSpaceBase(base, ground, location = null) {
-  base.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI);
+  base.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), location?.yaw ?? Math.PI);
   base.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(base);
   const size = box.getSize(new THREE.Vector3());
@@ -66,7 +66,8 @@ export function placeSpaceBase(base, ground, location = null) {
   const best = location ? sampleSite(ground, location.x, location.z, halfX, halfZ) : findBaseSite(ground, halfX, halfZ);
   base.position.x += best.x - center.x;
   base.position.z += best.z - center.z;
-  const floor = best.high + 0.05;
+  const foundationDrop = Math.max(0, location?.foundationDrop ?? 0);
+  const floor = Math.max(best.low + 0.15, best.high + 0.05 - foundationDrop);
   base.position.y += floor - box.min.y;
   base.name = "SpaceBaseModel";
 
@@ -98,6 +99,7 @@ export function placeSpaceBase(base, ground, location = null) {
   const group = new THREE.Group();
   group.name = "SpaceBase";
   group.userData.site = best;
+  group.userData.foundationDrop = foundationDrop;
   group.add(base, foundation);
   group.updateMatrixWorld(true);
   group.userData.buildingBounds = new THREE.Box3().setFromObject(base);
@@ -154,7 +156,7 @@ export function relocateSpaceBase(base, ground, spawnX, spawnZ) {
   const width = footprint.max.x - footprint.min.x, depth = footprint.max.z - footprint.min.z;
   // Validate and sample before changing any live geometry or collision bounds.
   const site = sampleSite(ground, center.x + dx, center.z + dz, width / 2, depth / 2);
-  const floor = site.high + 0.05, bottom = site.low - 0.3;
+  const floor = Math.max(site.low + 0.15, site.high + 0.05 - (base.userData.foundationDrop ?? 0)), bottom = site.low - 0.3;
   model.position.x += dx;
   model.position.z += dz;
   model.position.y += floor - building.min.y;

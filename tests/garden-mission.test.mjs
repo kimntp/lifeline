@@ -8,7 +8,7 @@ import { createSampleStation } from "../src/sample-station.js";
 
 function finishSurvey(mission, order = ["soil", "tomato", "wheat"]) {
   mission.learnGrowth();
-  for (const type of order) mission.collect(type);
+  for (const type of order) mission.collect(type, "shovel");
   mission.learnWater({ x: 20, z: 20 });
 }
 
@@ -16,15 +16,16 @@ test("mission gates sampling and deposits until peaceful contact and every objec
   const mission = new GardenMission();
   assert.equal(mission.phase, "contact");
   assert.deepEqual(mission.objectives.map(item => item.label), ["Talk to one of the aliens"]);
-  assert.equal(mission.collect("soil"), false);
+  assert.equal(mission.collect("soil", "shovel"), false);
   assert.equal(mission.learnWater({ x: 0, z: 0 }), false);
   assert.equal(mission.beginDeposit(), false);
   assert.equal(mission.learnGrowth(), true);
   assert.equal(mission.phase, "survey");
   assert.equal(mission.objectives.length, 4);
   assert.equal(GROWING_CONDITIONS.length, 4);
-  assert.equal(mission.collect("soil"), true);
-  assert.equal(mission.collect("soil"), false);
+  assert.equal(mission.collect("soil"), false, "Soil sampling requires the shovel");
+  assert.equal(mission.collect("soil", "shovel"), true);
+  assert.equal(mission.collect("soil", "shovel"), false);
   assert.equal(mission.collect("unknown"), false);
   mission.collect("tomato"); mission.collect("wheat");
   assert.equal(mission.beginDeposit(), false, "Water supply must be learned before reporting");
@@ -39,7 +40,7 @@ test("mission gates sampling and deposits until peaceful contact and every objec
   assert.equal(mission.phase, "complete");
   assert.deepEqual(mission.inventory, []);
   assert.ok(mission.objectives.every(item => item.done));
-  assert.equal(mission.collect("soil"), false);
+  assert.equal(mission.collect("soil", "shovel"), false);
   assert.equal(mission.beginDeposit(), false);
 });
 
@@ -47,9 +48,9 @@ test("learning water first still requires every crop; cancellation preserves sam
   for (const missing of ["soil", "tomato", "wheat"]) {
     const mission = new GardenMission();
     mission.learnGrowth(); mission.learnWater({ x: -20, z: -20 });
-    for (const type of ["soil", "tomato", "wheat"]) if (type !== missing) mission.collect(type);
+    for (const type of ["soil", "tomato", "wheat"]) if (type !== missing) mission.collect(type, "shovel");
     assert.equal(mission.beginDeposit(), false);
-    mission.collect(missing);
+    mission.collect(missing, "shovel");
     assert.equal(mission.phase, "return");
     assert.equal(mission.beginDeposit(), true);
     mission.cancelDeposit();
@@ -93,7 +94,7 @@ test("sampling selects only the nearby crop, requires contact, and never grants 
   assert.equal(nearestSamplePlot(colony, position, mission), null);
   mission.learnGrowth();
   assert.equal(nearestSamplePlot(colony, position, mission).type, "soil");
-  mission.collect("soil");
+  mission.collect("soil", "shovel");
   assert.equal(nearestSamplePlot(colony, position, mission).type, "tomato");
   mission.collect("tomato");
   assert.equal(nearestSamplePlot(colony, position, mission), null);
@@ -120,7 +121,8 @@ test("E completes the entire peaceful survey, then deposits only at the base sta
       if (code !== "KeyE") return false;
       const value = pressed; pressed = false; return value;
     } };
-    const interaction = createColonyInteraction(colony, { dubbingFactory: silentDubbingFactory, speechFactory: verifiedSpeechFactory, mission, getFootOffset: () => 0.4,
+    let equipped = "none";
+    const interaction = createColonyInteraction(colony, { getTool: () => equipped, dubbingFactory: silentDubbingFactory, speechFactory: verifiedSpeechFactory, mission, getFootOffset: () => 0.4,
       getBaseTarget: () => new THREE.Vector3(0, 1, 0),
       onProgress: () => { saved = mission.serialize(); }, onSample: type => samples.push(type),
       onDeposit: () => { if (mission.beginDeposit()) deposits++; } });
@@ -143,7 +145,14 @@ test("E completes the entire peaceful survey, then deposits only at the base sta
     assert.equal(elements.get("#mission-panel").className, "mission-panel is-open", "New survey tasks open the tab");
     assert.equal(elements.has("#apollo-radio"), false);
     player.position.copy(colony.plots[0].center).add(new THREE.Vector3(0, 0.4, 0));
-    step(); step(); step();
+    step();
+    assert.deepEqual(samples, [], "Soil cannot be collected with bare hands");
+    assert.equal(interaction.dig(player), false);
+    equipped = "shovel";
+    assert.equal(interaction.dig({ position: new THREE.Vector3(100, 0.4, 100) }), false, "Shovel requires nearby soil");
+    assert.equal(interaction.dig(player), true, "Shovel digging collects soil");
+    assert.equal(interaction.dig(player), false, "Soil cannot be collected twice");
+    step();
     assert.deepEqual(samples, ["soil", "tomato"]);
     player.position.copy(colony.plots[1].center).add(new THREE.Vector3(0, 0.4, 0));
     step();

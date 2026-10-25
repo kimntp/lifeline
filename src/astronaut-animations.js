@@ -1,4 +1,20 @@
 import * as THREE from "three";
+import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
+
+// Object3D.clone omits FBXLoader's custom IDs. Preserve them so nested skin
+// copies of an animated bone are still excluded from duplicate track binding.
+export function cloneAstronaut(source) {
+  source.updateMatrixWorld(true);
+  const clone = cloneSkeleton(source), originals = [];
+  source.traverse(node => originals.push(node));
+  let index = 0;
+  clone.traverse(node => {
+    const original = originals[index++];
+    if (original.ID !== undefined) node.ID = original.ID;
+  });
+  clone.updateMatrixWorld(true);
+  return clone;
+}
 
 // Exact names exported by Astronauta.fbx, including its reference poses.
 export const ASTRONAUT_CLIPS = [

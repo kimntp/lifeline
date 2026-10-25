@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { dialogueSession } from "./dialogue-session.js";
 
-export function createIceInteraction(encounter, { channel = dialogueSession, onComplete = () => {}, getTool = () => "baton", onSelectTool = () => {} } = {}) {
+export function createIceInteraction(encounter, { channel = dialogueSession, onComplete = () => {}, getTool = () => "baton" } = {}) {
   const root = document.createElement("div");
   root.id = "ice-colony-interface";
   root.hidden = true;
@@ -10,14 +10,8 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
     <button id="ice-objectives-toggle" class="objectives-toggle" type="button">Q · Objectives</button>
     <aside id="ice-mission-panel" class="mission-panel" aria-label="Colony 2 objectives">
       <p class="colony-eyebrow">COLONY 2</p><p id="ice-objectives"></p>
-      <p class="mission-caption">Tool inventory</p>
-      <div class="tool-inventory" aria-label="Tool inventory">
-        <button id="equip-baton" type="button">1 · Taser baton</button>
-        <button id="equip-pickaxe" type="button">2 · Pickaxe</button>
-      </div>
       <p id="ice-apollo" class="mission-water" role="status" aria-live="polite"></p>
     </aside>
-    <p id="ice-equipped" class="tool-instructions" role="status" hidden></p>
     <p id="ice-prompt" class="colony-talk-prompt" hidden></p>
     <section id="ice-dialogue" class="dialogue-box colony-dialogue" hidden aria-label="Colony 2 conversation">
       <p id="ice-speaker" class="colony-eyebrow"></p><p id="ice-line"></p>
@@ -37,8 +31,6 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
     element("ice-objectives-toggle").textContent = open ? "Q · Close objectives" : "Q · Objectives";
   }
   element("ice-objectives-toggle").addEventListener("click", toggle);
-  element("equip-baton").addEventListener("click", () => onSelectTool("baton"));
-  element("equip-pickaxe").addEventListener("click", () => onSelectTool("pickaxe"));
   function close() {
     conversation = null;
     channel.end(owner);
@@ -122,13 +114,9 @@ export function createIceInteraction(encounter, { channel = dialogueSession, onC
         : phase === "recognition" ? "The gray colonists recognize you"
         : `${encounter.asleep}/6 asleep${encounter.lastAlien ? " · Last alien downed and responsive" : ""}`;
       element("ice-objectives").textContent = phase === "neutral" || phase === "recognition" ? "Talk to one of the gray aliens."
-        : phase === "hostile" ? "Defend yourself. Use the taser baton to incapacitate all six aliens."
+        : phase === "hostile" ? "Incapacitate all six aliens."
         : phase === "lastDowned" ? "Talk to the downed alien. Ask Apollo to translate."
-        : `${encounter.tasks.ice ? "✓" : "○"} Mine ice core with pickaxe · ${encounter.tasks.water ? "✓" : "○"} Water scan · ${encounter.tasks.crystal ? "✓" : "○"} Crystal sample`;
-      element("ice-equipped").hidden = toolInstructionTime <= 0 || blocked || Boolean(conversation);
-      element("ice-equipped").textContent = `Equipped: ${getTool() === "pickaxe" ? "Pickaxe · Left-click to mine ice" : "Taser baton · Left-click · One stun sleeps an alien"} · 1/2 to switch`;
-      element("equip-baton").ariaPressed = String(getTool() === "baton");
-      element("equip-pickaxe").ariaPressed = String(getTool() === "pickaxe");
+        : `${encounter.tasks.ice ? "✓" : "○"} Mine ice core · ${encounter.tasks.water ? "✓" : "○"} Water scan · ${encounter.tasks.crystal ? "✓" : "○"} Crystal sample`;
       element("ice-apollo").textContent = encounter.message;
       element("ice-prompt").hidden = blocked || Boolean(conversation) || (!sample && !alien) || (sample === "ice" && toolInstructionTime <= 0);
       element("ice-prompt").textContent = sample === "ice" ? (getTool() === "pickaxe" ? "Left-click — Mine ice · 3 strikes" : "2 — Equip pickaxe to mine ice")

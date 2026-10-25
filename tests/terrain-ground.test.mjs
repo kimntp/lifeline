@@ -277,8 +277,8 @@ test("fixed level layout keeps the relocated base clear and leaves an exit towar
   const baseModel = asset("Base");
   const original = placeSpaceBase(baseModel.clone(true), ground);
   const base = placeSpaceBase(baseModel, ground, LEVEL_LAYOUT.base);
-  assert.equal(base.userData.site.x, original.userData.site.x);
-  assert.equal(base.userData.site.z, original.userData.site.z - 12);
+  assert.ok(Math.hypot(base.userData.site.x - LEVEL_LAYOUT.garden.x,
+    base.userData.site.z - LEVEL_LAYOUT.garden.z) > 85, "Base is substantially farther from Colony 1");
   const baseBounds = new THREE.Box3().setFromObject(base);
   const originalGarden = findColonySite(ground, new THREE.Box3().setFromObject(original));
   assert.equal(LEVEL_LAYOUT.garden.x, originalGarden.x);
@@ -295,6 +295,8 @@ test("fixed level layout keeps the relocated base clear and leaves an exit towar
   assert.equal(spawn.custom, true, "Fixed spawn must not fall back to automatic placement");
   assert.ok(spawn.position.distanceTo(originalSpawn.position) < 1e-6);
   assert.equal(spawn.position.y, base.userData.foundationBounds.max.y);
+  assert.ok(Math.abs(base.userData.foundationBounds.max.y - (base.userData.site.high + 0.05 - LEVEL_LAYOUT.base.foundationDrop)) < 1e-6,
+    "Foundation and base sit one meter lower while the spawn stays supported");
   assert.equal(colony.domeBounds.containsPoint(spawn.position), false);
   const station = createSampleStation(); station.update(base, ground, new GardenMission(), colony.bounds);
   assert.equal(station.bounds.intersectsBox(base.userData.foundationBounds), false);

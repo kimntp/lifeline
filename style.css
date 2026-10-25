@@ -666,13 +666,7 @@ button:focus-visible, select:focus-visible {
 .tool-inventory button { padding: 8px 12px; cursor: pointer; }
 .tool-inventory button[aria-pressed="true"] { outline: 2px solid #72cfe9; }
 
-.tool-instructions {
-  position: fixed; right: var(--hud-right); bottom: 130px; z-index: 7;
-  max-width: min(340px, calc(100vw - 40px)); margin: 0; padding: 12px 16px;
-  border: 1px solid #72cfe9; border-radius: 8px;
-  background: rgba(5, 9, 18, 0.92); color: #edfaff; pointer-events: none;
-}
-.tool-instructions[hidden] { display: none; }
+
 
 #speech-verification { margin-top: 10px; border-top: 1px solid #425741; padding-top: 8px; }
 .speech-instructions { font-size: 0.75em; color: #c0d5b9; }
@@ -695,3 +689,22 @@ button:focus-visible, select:focus-visible {
 
 .dialogue-box.apollo-dialogue { background: rgba(5, 9, 18, 0.92); border-color: rgba(184, 184, 184, 0.45); }
 .apollo-dialogue #colony-speaker { color: #b8b8b8; }
+
+.player-inventory { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 7;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: calc(100vw - 32px);
+  padding: 8px; color: #eef7f9; background: rgba(5,9,18,.9); border: 1px solid #53636d; }
+.player-inventory span { font-size: 12px; margin-right: 4px; }
+.player-inventory button { padding: 7px 9px; background: #19242d; color: #eef7f9; border: 1px solid #53636d; }
+.player-inventory button[aria-pressed="true"] { border-color: #72cfe9; }
+.player-inventory[hidden] { display: none; }
+
+.survey-montage { position: fixed; inset: 0; z-index: 9; color: #fff; pointer-events: none; }
+.montage-letterbox { position: absolute; left: 0; right: 0; background: #000; }
+.montage-top { top: 0; height: 8vh; }
+.montage-bottom { bottom: 0; min-height: 16vh; padding: 18px 24px; text-align: center; }
+.montage-region { position: absolute; top: 11vh; left: 5vw; font-size: clamp(11px, 1.4vw, 15px); letter-spacing: .16em; text-shadow: 0 2px 8px #000; }
+.montage-caption { max-width: 760px; margin: 0 auto 10px; font-size: clamp(14px, 1.7vw, 20px); line-height: 1.5; }
+.montage-bottom button { pointer-events: auto; background: transparent; color: #b8bec9; border: 0; padding: 5px 12px; }
+.montage-dissolve { position: absolute; inset: 0; background: #000; pointer-events: none; }
+.survey-montage[hidden], body.survey-cinematic #orangebot-overlay,
+body.survey-cinematic #narration-captions { display: none !important; }

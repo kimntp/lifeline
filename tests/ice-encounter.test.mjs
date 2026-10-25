@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import * as THREE from "three";
 import { createAlienLoader, prepareAlienModel } from "../src/alien-farmers.js";
+import { equipShovel } from "../src/player-inventory.js";
 import { IceEncounter, equipTaserBaton, equipMiningPick } from "../src/ice-encounter.js";
 import { createIceInteraction } from "../src/ice-interaction.js";
 import { createDialogueSession } from "../src/dialogue-session.js";
@@ -196,13 +197,12 @@ test("swinging during recognition releases dialogue ownership and registers a st
     assert.equal(encounter.units[0].hits, 1);
     const idleKeys = { consumeJustPressed: () => false };
     ui.update({ position: new THREE.Vector3() }, idleKeys, 5);
-    assert.equal(elements.get("#ice-equipped").hidden, true, "Tool instructions disappear after five gameplay seconds");
+    assert.equal(elements.has("#ice-equipped"), false);
     equipped = "pickaxe";
     ui.update({ position: new THREE.Vector3() }, idleKeys, 0);
-    assert.equal(elements.get("#ice-equipped").hidden, false, "Switching tools briefly shows the new instructions");
-    assert.match(elements.get("#ice-equipped").textContent, /Pickaxe/);
+    assert.equal(elements.has("#ice-equipped"), false, "Switching tools does not show an equipped popup");
     ui.update({ position: new THREE.Vector3() }, idleKeys, 5);
-    assert.equal(elements.get("#ice-equipped").hidden, true);
+    assert.equal(elements.has("#ice-equipped"), false);
     ui.destroy();
   } finally { globalThis.document = previous; }
   encounter.dispose();
@@ -261,4 +261,14 @@ test("astronaut pickaxe attaches to the same hand as the baton", () => {
   const pickaxe = equipMiningPick(player, true);
   assert.equal(pickaxe.parent, hand);
   assert.ok(Math.abs(pickaxe.getWorldScale(new THREE.Vector3()).x - 1) < 1e-6);
+});
+
+
+test("survey shovel is a hidden inventory tool attached at world scale to the left hand", () => {
+  const player = new THREE.Group(), hand = new THREE.Bone(); hand.name = "maoL";
+  player.scale.setScalar(0.01); player.add(hand);
+  const shovel = equipShovel(player);
+  assert.equal(shovel.parent, hand); assert.equal(shovel.visible, false);
+  assert.equal(shovel.name, "SurveyShovel");
+  assert.ok(Math.abs(shovel.getWorldScale(new THREE.Vector3()).x - 1) < 1e-6);
 });

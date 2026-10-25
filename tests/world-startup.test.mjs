@@ -7,7 +7,7 @@ import { LEVEL_LAYOUT } from "../src/level-layout.js";
 import { GameSession } from "../src/game-menu.js";
 import { GardenMission } from "../src/garden-mission.js";
 import { ASTRONAUT_CLIPS } from "../src/astronaut-animations.js";
-import { placeSpaceBase } from "../src/space-base.js";
+import { placeSpaceBase, getPlayerSpawn } from "../src/space-base.js";
 import { resolveBaseCollision, resolvePlatformCollision } from "../src/base-collision.js";
 import { createSampleStation } from "../src/sample-station.js";
 import { ICE_ASSETS, buildIceBase } from "../src/ice-base.js";
@@ -31,12 +31,20 @@ test("world startup wires a fresh mission, base sample station and deposit callb
     }
   }
   const noop = () => {};
-  const api = vm.runInNewContext(`${source}\n({ shared, session, loadSpaceBase, placeIceBase, updateWorldProgression, updateColonyInteraction, selectPlayerTool, createSurveyInteraction, step9_collision, callbacks: _previewFns, loop: _loopShared, getMission: () => gardenMission });`, {
-    THREE, GameSession, GardenMission, ASTRONAUT_CLIPS, placeSpaceBase, createSampleStation, LEVEL_LAYOUT,
+  let transitions = 0, montageDisposed = false, finishMontage;
+  const montageDone = new Promise(resolve => { finishMontage = resolve; });
+  const menuHarness = { render: noop, transitioning: false, async transitionToGame(fn) { fn(); transitions++; } };
+  const bodyClasses = new Set();
+  const api = vm.runInNewContext(`${source}\n({ shared, session, loadSpaceBase, placeIceBase, updateWorldProgression, updateColonyInteraction, selectPlayerTool, createSurveyInteraction, step9_collision, callbacks: _previewFns, loop: _loopShared, depositSurveySamples, getFlags: () => flags, getMission: () => gardenMission });`, {
+    THREE, GameSession, GardenMission, ASTRONAUT_CLIPS, placeSpaceBase, getPlayerSpawn, createSampleStation, LEVEL_LAYOUT,
     FBXLoader: AssetLoader, ICE_ASSETS, buildIceBase, resolveBaseCollision, resolvePlatformCollision, dialogueSession: { busy: false },
     createColonyInteraction(_colony, options) { interactionOptions = options; return {}; },
-    createGameMenu: () => ({ render: noop }),
-    window: { addEventListener: noop }, document: { addEventListener: noop },
+    createGameMenu: () => menuHarness,
+    createSurveyMontage() {
+      assert.equal(api.getMission().completed, true, "Sample deposit commits before the montage");
+      return { finished: montageDone, dispose() { montageDisposed = true; } };
+    },
+    window: { addEventListener: noop, matchMedia: () => ({ matches: false }) }, document: { addEventListener: noop, body: { classList: { add: name => bodyClasses.add(name), remove: name => bodyClasses.delete(name) } } },
     localStorage: { getItem() { throw new Error("World locations must not read browser storage"); }, setItem() { throw new Error("World locations must not write browser storage"); } }, console, queueMicrotask,
   });
   api.shared.scene = new THREE.Scene();
@@ -58,12 +66,17 @@ test("world startup wires a fresh mission, base sample station and deposit callb
   assert.equal(api.getMission().phase, "contact", "Cannot deposit samples from the home screen");
   await api.placeIceBase({ x: 50, z: 50 });
   api.shared.baton = new THREE.Group();
+  api.shared.shovel = new THREE.Group();
+  api.selectPlayerTool("shovel");
+  assert.equal(api.shared.shovel.visible, true);
+  api.selectPlayerTool("baton");
+  assert.equal(api.shared.selectedTool, "shovel", "Combat tools remain locked during the first mission");
   api.updateWorldProgression();
   assert.equal(api.shared.baton.visible, false, "Baton stays hidden during the first survey");
   assert.equal(api.shared.iceBase.group.visible, false);
   const mission = api.getMission();
   mission.learnGrowth();
-  for (const type of ["soil", "tomato", "wheat"]) mission.collect(type);
+  for (const type of ["soil", "tomato", "wheat"]) mission.collect(type, "shovel");
   mission.learnWater({ x: -30, z: -30 });
   api.updateWorldProgression();
   assert.equal(api.shared.iceBase.group.visible, false, "Collected samples alone do not reveal the ice base");
@@ -71,6 +84,7 @@ test("world startup wires a fresh mission, base sample station and deposit callb
   api.updateWorldProgression();
   assert.equal(api.shared.iceBase.group.visible, false, "Ice base remains hidden until the report commits");
   mission.finishDeposit();
+  api.selectPlayerTool("baton");
   api.updateWorldProgression();
   assert.equal(api.shared.iceBase.group.visible, true);
   let leftGarden = 0, iceFrames = 0;
@@ -81,6 +95,7 @@ test("world startup wires a fresh mission, base sample station and deposit callb
   for (let i = 0; i < 3; i++) api.updateColonyInteraction(1 / 60);
   assert.equal(leftGarden, 3); assert.equal(iceFrames, 3, "Phase two keeps updating after sample turn-in");
   assert.equal(api.shared.baton.visible, true, "Baton appears after the sample-report wake-up");
+  assert.equal(api.shared.shovel.visible, false, "Only the equipped tool is visible");
   api.shared.pickaxe = new THREE.Group();
   api.selectPlayerTool("pickaxe"); api.updateWorldProgression();
   assert.equal(api.shared.baton.visible, false);
@@ -102,4 +117,21 @@ test("world startup wires a fresh mission, base sample station and deposit callb
   api.shared.player.position.set(32, 10, 15);
   collision();
   assert.equal(api.shared.player.position.x, 32, "Garden stays accessible before completion");
+  api.session.ready = true; api.session.play();
+  api.shared.player = new THREE.Group(); api.shared.camera = new THREE.PerspectiveCamera();
+  api.shared.stateMachine = { setPreview: noop }; api.shared.mixer = { update: noop };
+  api.shared.colonyInteraction = { leave: noop, update: noop, refresh: noop };
+  api.shared.colonyModels = { aliens: {}, wheat: new THREE.Group() };
+  const deposit = api.depositSurveySamples();
+  await Promise.resolve();
+  assert.ok(api.shared.surveyMontage, "Phase-one turn-in opens the regional montage");
+  assert.equal(bodyClasses.has("survey-cinematic"), true);
+  assert.equal(transitions, 1, "Montage remains on screen until finished or skipped");
+  finishMontage(); await deposit;
+  assert.equal(transitions, 2, "A second fade returns to gameplay");
+  assert.equal(montageDisposed, true); assert.equal(api.shared.surveyMontage, null);
+  assert.equal(bodyClasses.size, 0); assert.equal(api.getFlags().missionTransition, false);
+  assert.equal(mission.completed, true); assert.deepEqual(mission.inventory, []);
+  assert.equal(api.shared.player.position.x, LEVEL_LAYOUT.spawn.x);
+  assert.equal(api.shared.player.position.z, LEVEL_LAYOUT.spawn.z);
 });

@@ -79,7 +79,7 @@ test("Apollo intro, dialogue, verification feedback and mission updates all use 
   for (const order of [["soil", "tomato", "wheat"], ["tomato", "wheat", "soil"], ["wheat", "soil", "tomato"]]) {
     const mission = new GardenMission(); mission.learnGrowth(); remember(mission);
     mission.learnWater(site); remember(mission);
-    for (const sample of order) { mission.collect(sample); remember(mission); }
+    for (const sample of order) { mission.collect(sample, "shovel"); remember(mission); }
     mission.beginDeposit(); mission.finishDeposit(); remember(mission);
     remember(new GardenMission(mission.serialize()));
   }

@@ -32,10 +32,10 @@ with no kill/death state. E opens his untranslated message. Apollo says the
 translation was processed but substitutes resource instructions rather than
 revealing the literal message. This unlocks three actionable tasks: collect an
 ice core, scan the central water source, and collect a crystal sample. The tool
-inventory in the Q panel contains a baton and pickaxe, selectable with 1 and 2
-or the inventory buttons. Tool controls appear for five gameplay seconds on
-equipping a tool, then disappear; approaching an ice block briefly shows mining
-guidance. The complete controls remain in Pause → Instructions. Only the equipped tool is visible after the first
+inventory is separate from the objectives panel. It contains the baton (1),
+pickaxe (2), and shovel (3). The shovel is available for the first mission;
+combat tools unlock at the sample-report wake-up. Switching tools does not show an equipped popup; approaching an ice block
+briefly shows mining guidance. The complete controls remain in Pause → Instructions. Only the equipped tool is visible after the first
 sample-report wake-up. Left-click with the pickaxe performs a mining swing;
 three paced strikes on the same nearby ice block collect the core. Facing,
 reach and intervening ice geometry are checked. The pickaxe never harms aliens.
