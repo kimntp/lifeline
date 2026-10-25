@@ -47,7 +47,7 @@ export class GardenMission {
   }
 
   waterDestination(site) {
-    return this.coordinates ?? { x: site.x >= 0 ? -64 : 64, z: site.z >= 0 ? -52 : 52 };
+    return this.coordinates ?? this.waterLocation ?? { x: site.x >= 0 ? -64 : 64, z: site.z >= 0 ? -52 : 52 };
   }
 
   learnWater(site) {

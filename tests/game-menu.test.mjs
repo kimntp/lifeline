@@ -92,9 +92,12 @@ test("home screen renders its real logo and start button, then switches to pause
     let starts = 0;
     const noop = () => {};
     const menu = createGameMenu({ session, clips: [], onPlay: () => { starts++; }, onPause: noop,
-      onNavigate: noop, onPreview: noop, onMoveBase: noop, onMoveColony: noop, onSetSpawn: noop, onIceBase: noop });
+      onNavigate: noop, onPreview: noop });
     assert.doesNotThrow(() => menu.render());
     assert.equal(elements.has("logo-placeholder"), false);
+    for (const id of ["move-base-button", "move-colony-button", "ice-base-button", "set-spawn-button"]) {
+      assert.equal(elements.has(id), false, "Placement controls are removed from the pause menu");
+    }
     assert.equal(elements.get("home-logo").hidden, false);
     assert.equal(elements.get("instructions-button").hidden, true);
     assert.equal(elements.get("play-button").disabled, true);

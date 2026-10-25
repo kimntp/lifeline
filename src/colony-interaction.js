@@ -50,6 +50,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
   const dialogue = element("colony-dialogue");
   const distanceLabel = element("colony-distance");
   let conversation = null, lines = [], line = 0, renderedRevision = -1, objectivesOpen = false;
+  let objectivesIntroduced = false, surveyIntroduced = mission.explained;
   let visible = false;
   let lastMissionMessage = null;
   const dubbing = dubbingFactory({ owner: conversationOwner, site: colony.site, onChange: state => {
@@ -77,8 +78,8 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
       else showLine();
     }
   } });
-  function toggleObjectives() {
-    objectivesOpen = !objectivesOpen;
+  function toggleObjectives(force) {
+    objectivesOpen = typeof force === "boolean" ? force : !objectivesOpen;
     element("mission-panel").className = `mission-panel${objectivesOpen ? " is-open" : ""}`;
     element("mission-panel").ariaHidden = String(!objectivesOpen);
     element("objectives-toggle").ariaExpanded = String(objectivesOpen);
@@ -88,6 +89,9 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
   function renderMission() {
     if (renderedRevision === mission.revision) return;
     renderedRevision = mission.revision;
+    if (!mission.completed && (!objectivesIntroduced || (mission.explained && !surveyIntroduced))) toggleObjectives(true);
+    objectivesIntroduced = true;
+    surveyIntroduced = mission.explained;
     element("mission-title").textContent = mission.completed ? "SURVEY COMPLETE" : "FIELD SURVEY · GARDEN COLONY";
     element("mission-objectives").innerHTML = mission.objectives.map(item =>
       `<li class="${item.done ? "done" : ""}"><span aria-hidden="true">${item.done ? "✓" : "○"}</span>${item.label}</li>`).join("");
@@ -103,6 +107,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
       lastMissionMessage = mission.apolloMessage;
       onApolloMessage?.(mission.apolloMessage);
     }
+    if (mission.completed) { root.hidden = true; close(); }
   }
   function progress(changed) { if (changed) onProgress?.(); }
   function close() {
@@ -146,6 +151,7 @@ export function createColonyInteraction(colony, { mission = new GardenMission(),
       root.hidden = !nextVisible;
     },
     update(player, keyboard, cameraYaw = 0) {
+      if (mission.completed) { root.hidden = true; close(); return; }
       if (keyboard?.consumeJustPressed("KeyQ")) toggleObjectives();
       const returning = mission.phase === "return";
       const baseTarget = getBaseTarget();

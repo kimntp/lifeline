@@ -23,8 +23,8 @@ const colony = buildGardenColony({ ...models, ground, baseBounds });
 
 test("colony uses the supplied dome, tomato and wheat assets at human scale", () => {
   assert.equal(colony.plots.length, 4);
-  assert.equal(colony.workers.length, 3);
-  assert.deepEqual(colony.workers.map(worker => worker.visual.userData.variant), ["green", "gray", "green"]);
+  assert.equal(colony.workers.length, 6);
+  assert.ok(colony.workers.every(worker => worker.visual.userData.variant === "green"));
   for (const worker of colony.workers) {
     const animator = worker.visual.userData.animator;
     assert.deepEqual([...animator.actions.keys()].sort(), ["Idle", "Run", "Walk"]);

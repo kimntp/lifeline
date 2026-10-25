@@ -126,24 +126,21 @@ test("E completes the entire peaceful survey, then deposits only at the base sta
       onDeposit: () => { if (mission.beginDeposit()) deposits++; } });
     const step = (key = true) => { pressed = key; interaction.update(player, keyboard); };
     step(false);
-    assert.equal(elements.get("#mission-panel").className, undefined);
+    assert.equal(elements.get("#mission-panel").className, "mission-panel is-open", "First contact objective opens automatically");
     assert.match(elements.get("#mission-objectives").innerHTML, /Talk to one of the aliens/);
     assert.doesNotMatch(elements.get("#mission-objectives").innerHTML, /Collect a soil sample/);
     qPressed = true; step(false);
-    assert.equal(elements.get("#mission-panel").className, "mission-panel is-open");
-    assert.equal(elements.get("#objectives-toggle").ariaExpanded, "true");
-    step(false);
-    assert.equal(elements.get("#mission-panel").className, "mission-panel is-open", "One key press must only toggle once");
-    qPressed = true; step(false);
     assert.equal(elements.get("#mission-panel").className, "mission-panel");
     assert.equal(elements.get("#objectives-toggle").ariaExpanded, "false");
+    step(false);
+    assert.equal(elements.get("#mission-panel").className, "mission-panel", "One key press must only toggle once");
     assert.equal(elements.get("#mission-conditions").hidden, true);
     for (let i = 0; i < 5; i++) step();
     assert.equal(mission.explained, true);
     assert.equal(colony.workers[0].talking, false);
     assert.equal(elements.get("#mission-conditions").hidden, false);
     assert.match(elements.get("#mission-objectives").innerHTML, /Collect a soil sample/);
-    assert.equal(elements.get("#mission-panel").className, "mission-panel", "New tasks do not force open a closed tab");
+    assert.equal(elements.get("#mission-panel").className, "mission-panel is-open", "New survey tasks open the tab");
     assert.equal(elements.has("#apollo-radio"), false);
     player.position.copy(colony.plots[0].center).add(new THREE.Vector3(0, 0.4, 0));
     step(); step(); step();
@@ -170,26 +167,31 @@ test("E completes the entire peaceful survey, then deposits only at the base sta
     mission.finishDeposit(); interaction.refresh();
     assert.equal(elements.get("#mission-title").textContent, "SURVEY COMPLETE");
     assert.deepEqual(mission.inventory, []);
-    interaction.setVisible(false);
+    interaction.setVisible(true);
     assert.equal(root.hidden, true);
   } finally { globalThis.document = originalDocument; }
 });
 
-test("sample tray shows deposited samples and follows the base when it moves", () => {
+test("sample table and intake tube stand off the foundation and follow the base", () => {
   const base = { userData: {
     foundationBounds: new THREE.Box3(new THREE.Vector3(-8, 0, -8), new THREE.Vector3(8, 1, 8)),
     buildingBounds: new THREE.Box3(new THREE.Vector3(-7, 1, -7), new THREE.Vector3(7, 7, 7)),
   } };
   const mission = new GardenMission(), station = createSampleStation();
   station.update(base, null, mission);
-  assert.equal(station.group.children.filter(child => child.visible).length, 1);
+  const samples = ["soil", "tomato", "wheat"].map(type => station.group.getObjectByName(`SampleContainer_${type}`));
+  assert.ok(samples.every(child => !child.visible));
+  assert.ok(station.group.getObjectByName("SampleStationTable"));
+  assert.ok(station.group.getObjectByName("SampleIntakeTube"));
+  assert.equal(station.bounds.intersectsBox(base.userData.foundationBounds), false);
+  assert.equal(station.target.y, 0);
   finishSurvey(mission);
   station.update(base, null, mission);
-  assert.equal(station.group.children.at(-1).visible, true);
+  assert.equal(station.group.getObjectByName("SampleStationMarker").visible, true);
   mission.beginDeposit(); mission.finishDeposit();
   station.update(base, null, mission);
-  assert.equal(station.group.children.at(-1).visible, false);
-  assert.ok(station.group.children.slice(1, 4).every(child => child.visible));
+  assert.equal(station.group.getObjectByName("SampleStationMarker").visible, false);
+  assert.ok(samples.every(child => child.visible));
   const old = station.target.clone();
   base.userData.foundationBounds.translate(new THREE.Vector3(20, 0, 10));
   base.userData.buildingBounds.translate(new THREE.Vector3(20, 0, 10));

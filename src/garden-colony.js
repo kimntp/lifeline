@@ -11,6 +11,9 @@ const FARMERS = [
   { name: "Iri", role: "Soilkeeper" },
   { name: "Vela", role: "Grower" },
   { name: "Naru", role: "Seedkeeper" },
+  { name: "Seli", role: "Grower" },
+  { name: "Tavi", role: "Soilkeeper" },
+  { name: "Oru", role: "Seedkeeper" },
 ];
 
 function normalizedModel(source, height) {
@@ -232,8 +235,8 @@ export function buildGardenColony({ tomato, wheat, dome, aliens, ground, baseBou
   const entrance = new THREE.Vector3(domeX, heightAt(domeX, domeZ + 5.2), domeZ + 5.2);
   const interior = new THREE.Vector3(domeX, domeFloor, domeZ);
   const workers = [];
-  for (let index = 0; index < 3; index++) {
-    const variant = index % 2 ? "gray" : "green";
+  for (let index = 0; index < 6; index++) {
+    const variant = "green";
     const visual = createAlienFarmer(aliens[variant], variant);
     visual.name = FARMERS[index].name;
     group.add(visual);
