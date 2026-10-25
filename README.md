@@ -8,6 +8,7 @@
 ```bash
 # 1. Install dependencies
 npm install
+- if that doesn't work do npm audit fix then npm install again
 
 # 2. Start dev server
 npm run dev
