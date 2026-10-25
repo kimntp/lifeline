@@ -53,7 +53,7 @@ export function findBaseSite(ground, halfX, halfZ) {
   return best;
 }
 
-export function placeSpaceBase(base, ground) {
+export function placeSpaceBase(base, ground, location = null) {
   base.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI);
   base.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(base);
@@ -63,7 +63,7 @@ export function placeSpaceBase(base, ground) {
   box.getSize(size);
   const center = box.getCenter(new THREE.Vector3());
   const halfX = size.x / 2 + 0.8, halfZ = size.z / 2 + 0.8;
-  const best = findBaseSite(ground, halfX, halfZ);
+  const best = location ? sampleSite(ground, location.x, location.z, halfX, halfZ) : findBaseSite(ground, halfX, halfZ);
   base.position.x += best.x - center.x;
   base.position.z += best.z - center.z;
   const floor = best.high + 0.05;

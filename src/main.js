@@ -10,23 +10,25 @@ import { ASTRONAUT_CLIPS, AstronautAnimator } from "./astronaut-animations.js";
 import { TerrainGround, advanceGroundedActor, measureFootOffset } from "./terrain-ground.js";
 import { createTerrainSurround } from "./terrain-surround.js";
 import { GameSession, createGameMenu } from "./game-menu.js";
-import { placeSpaceBase, foundationHeightAt, getPlayerSpawn, relocateSpaceBase } from "./space-base.js";
+import { placeSpaceBase, foundationHeightAt, getPlayerSpawn } from "./space-base.js";
 import { resolveBaseCollision, resolvePlatformCollision } from "./base-collision.js";
 import { buildGardenColony } from "./garden-colony.js";
 import { createColonyInteraction } from "./colony-interaction.js";
 import { createAlienLoader, prepareAlienModel } from "./alien-farmers.js";
 import { GardenMission } from "./garden-mission.js";
 import { createSampleStation } from "./sample-station.js";
+import { createColonyInterference } from "./colony-interference.js";
+import { IceEncounter, equipTaserBaton, equipMiningPick } from "./ice-encounter.js";
+import { createIceInteraction } from "./ice-interaction.js";
+import { createIceAftermath } from "./ice-aftermath.js";
+import { dialogueSession } from "./dialogue-session.js";
+
+import { LEVEL_LAYOUT } from "./level-layout.js";
 
 const session = new GameSession();
-// Mission progress resets on reload; saved world locations are independent.
+// Mission progress resets on reload; level locations are fixed in source.
 const gardenMission = new GardenMission();
-const BASE_SPAWN_STORAGE_KEY = "lifeline:level-1:base-spawn";
-const PLAYER_SPAWN_STORAGE_KEY = "lifeline:level-1:player-spawn";
-const COLONY_STORAGE_KEY = "lifeline:level-1:garden-colony";
-const ICE_BASE_STORAGE_KEY = "lifeline:level-1:ice-base";
 let iceModelsPromise = null;
-let placingIceBase = false;
 
 const shared = {
   scene: null,
@@ -36,6 +38,13 @@ const shared = {
   spaceBase: null,
   sampleStation: null,
   iceBase: null,
+  iceEncounter: null,
+  iceInteraction: null,
+  baton: null,
+  pickaxe: null,
+  selectedTool: "baton",
+  batonRequested: false,
+  interference: null,
   colony: null,
   colonyModels: null,
   colonyInteraction: null,
@@ -62,6 +71,22 @@ const flags = {
 function worldGroundHeight(x, z) {
   const terrain = shared.terrainGround?.heightAt(x, z) ?? 0;
   return foundationHeightAt(shared.spaceBase, x, z, Math.max(terrain, shared.colony?.heightAt(x, z) ?? terrain));
+}
+
+function updateWorldProgression() {
+  if (shared.baton) shared.baton.visible = gardenMission.completed && shared.selectedTool === "baton";
+  if (shared.pickaxe) shared.pickaxe.visible = gardenMission.completed && shared.selectedTool === "pickaxe";
+  if (shared.iceBase) shared.iceBase.group.visible = gardenMission.completed;
+  if (shared.iceEncounter) shared.iceEncounter.group.visible = gardenMission.completed;
+  shared.interference?.update({ completed: gardenMission.completed,
+    active: !session.paused && !flags.missionTransition, position: shared.player?.position,
+    colonyBounds: shared.colony?.bounds, baseBounds: shared.spaceBase?.userData.foundationBounds });
+}
+
+function atIceColony(position) {
+  if (!gardenMission.completed || !shared.iceEncounter?.inArea(position)) return false;
+  const ice = shared.iceBase.location, garden = shared.colony.site;
+  return Math.hypot(position.x - ice.x, position.z - ice.z) < Math.hypot(position.x - garden.x, position.z - garden.z);
 }
 
 let updatePlayerVitals = null;
@@ -139,17 +164,21 @@ function startPreview() {
     const delta = Math.min(clock.getDelta(), 0.1);
 
     // Execute every registered per-frame feature callback in sequence
-    if (shared.sampleStation) shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission);
-    if (!session.paused && !flags.missionTransition) {
+    if (shared.sampleStation) shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission, shared.colony?.bounds);
+    if (!session.paused && !flags.missionTransition && !shared.iceAftermath) {
       for (const fn of _previewFns) fn(delta);
     } else if (!flags.missionTransition && session.screen === "animations" && shared.stateMachine?.preview) {
       // Only the selected preview animates; gameplay remains frozen.
       shared.mixer.update(delta);
     }
 
+    shared.iceAftermath?.update(delta, !session.paused && !gameMenu.transitioning);
+
     // Final render pass — draw everything to the canvas
+    updateWorldProgression();
     updatePlayerVitals?.(!session.paused);
-    shared.colonyInteraction?.setVisible(!session.paused);
+    shared.colonyInteraction?.setVisible(!session.paused && !gardenMission.completed);
+    shared.iceInteraction?.setVisible(!session.paused && gardenMission.completed && !shared.iceAftermath && !flags.missionTransition);
     const { scene, renderer, camera } = shared;
     if (scene && renderer && camera) {
       renderer.render(scene, camera);
@@ -174,6 +203,7 @@ function step1_sceneSetup() {
   scene.background = new THREE.Color(0x03040a);
 
   const canvas = document.querySelector("#game-canvas");
+  shared.interference = createColonyInterference(canvas);
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
@@ -307,18 +337,10 @@ async function loadSpaceBase() {
   };
   manager.addHandler(/\.png$/i, paletteLoader);
   const base = await new FBXLoader(manager).loadAsync("/assets/Base.fbx");
-  shared.spaceBase = placeSpaceBase(base, shared.terrainGround);
-  try {
-    const saved = JSON.parse(localStorage.getItem(BASE_SPAWN_STORAGE_KEY));
-    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.z)) {
-      relocateSpaceBase(shared.spaceBase, shared.terrainGround, saved.x, saved.z);
-    }
-  } catch {
-    // Use the default level placement if storage is unavailable or stale.
-  }
+  shared.spaceBase = placeSpaceBase(base, shared.terrainGround, LEVEL_LAYOUT.base);
   shared.scene.add(shared.spaceBase);
   shared.sampleStation = createSampleStation();
-  shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission);
+  shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission, shared.colony?.bounds);
   shared.scene.add(shared.sampleStation.group);
 }
 
@@ -345,17 +367,36 @@ async function loadGardenColony() {
   shared.colonyModels = { tomato, wheat, dome, aliens: { gray: prepareAlienModel(gray), green: prepareAlienModel(green) } };
   const options = { ...shared.colonyModels, ground: shared.terrainGround,
     baseBounds: new THREE.Box3().setFromObject(shared.spaceBase) };
-  try {
-    const location = JSON.parse(localStorage.getItem(COLONY_STORAGE_KEY));
-    shared.colony = buildGardenColony({ ...options, location });
-  } catch {
-    shared.colony = buildGardenColony(options);
-  }
+  shared.colony = buildGardenColony({ ...options, location: LEVEL_LAYOUT.garden });
   shared.scene.add(shared.colony.group);
   shared.colonyInteraction = createSurveyInteraction(shared.colony);
   addPreviewFn(delta => shared.colony.update(delta), 51);
-  addPreviewFn(() => {
-    if (shared.player) shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
+  addPreviewFn(delta => {
+    if (shared.keyboard?.consumeJustPressed("Digit1")) selectPlayerTool("baton");
+    if (shared.keyboard?.consumeJustPressed("Digit2")) selectPlayerTool("pickaxe");
+    if (shared.batonRequested) {
+      shared.batonRequested = false;
+      if (shared.selectedTool === "baton" && shared.player && atIceColony(shared.player.position)) shared.iceInteraction?.prepareStrike();
+      if (!dialogueSession.busy && shared.player && gardenMission.completed) {
+        _loopShared.hit = true;
+        const forward = new THREE.Vector3(-Math.sin(shared.look.yaw), 0, -Math.cos(shared.look.yaw));
+        shared.player.rotation.y = Math.atan2(forward.x, forward.z);
+        if (shared.selectedTool === "pickaxe") shared.iceEncounter?.mine(shared.player.position, forward, "pickaxe");
+        else shared.iceEncounter?.strike(shared.player.position, forward);
+      }
+    }
+    if (gardenMission.completed && shared.player) shared.iceEncounter?.update(delta, shared.player, shared.playerState);
+  }, 50);
+  addPreviewFn(delta => {
+    if (!shared.player) return;
+    if (gardenMission.completed && shared.iceInteraction) {
+      shared.colonyInteraction.leave();
+      shared.iceInteraction.update(shared.player, shared.keyboard, delta);
+      if (shared.iceEncounter.phase === "complete" && !shared.iceEncounter.aftermathPlayed) void playIceAftermath();
+    } else {
+      shared.iceInteraction?.leave();
+      shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
+    }
   }, 52);
 }
 
@@ -502,15 +543,7 @@ async function step4_player() {
     }
   });
 
-  // Restore this level's chosen spawn, or start beside the base by default.
-  let savedSpawn = null;
-  try { savedSpawn = JSON.parse(localStorage.getItem(PLAYER_SPAWN_STORAGE_KEY)); } catch {}
-  let spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, savedSpawn);
-  if (spawn.custom && shared.colony) {
-    const checked = spawn.position.clone();
-    resolveBaseCollision(checked, spawn.position, shared.colony.domeBounds);
-    if (checked.distanceToSquared(spawn.position) > 1e-8) spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, null);
-  }
+  const spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, LEVEL_LAYOUT.spawn);
   player.position.copy(spawn.position);
   player.rotation.y = spawn.yaw;
   scene.add(player);
@@ -537,6 +570,10 @@ async function step5_animations() {
   shared.mixer = animator.mixer;
   shared.actions = animator.actions;
   shared.stateMachine = animator;
+  shared.baton = equipTaserBaton(shared.player);
+  shared.baton.visible = false;
+  shared.pickaxe = equipMiningPick(shared.player, true);
+  shared.pickaxe.visible = false;
 
   // Every frame: feed player state into the state machine to pick current animation
   addPreviewFn((delta) => {
@@ -653,6 +690,9 @@ function step7_movement() {
   }
 
   shared.keyboard = new KeyboardInput();
+  shared.renderer.domElement.addEventListener("click", () => {
+    if (!session.paused && !flags.missionTransition && document.pointerLockElement === shared.renderer.domElement) shared.batonRequested = true;
+  });
   flags.movement = true;
 
   // Every frame: read keys, compute camera-relative move vector, update position + rotation
@@ -833,7 +873,11 @@ function step9_collision() {
 
     if (baseBounds) resolveBaseCollision(player.position, prevPos ?? player.position, baseBounds, radius);
     if (shared.colony) resolveBaseCollision(player.position, prevPos ?? player.position, shared.colony.domeBounds, radius);
-    for (const bounds of shared.iceBase?.obstacles ?? []) {
+    if (gardenMission.completed && shared.colony) {
+      resolveBaseCollision(player.position, prevPos ?? player.position, shared.colony.bounds.clone().expandByScalar(1.5), radius);
+    }
+    if (shared.sampleStation) resolveBaseCollision(player.position, prevPos ?? player.position, shared.sampleStation.bounds, radius);
+    for (const bounds of gardenMission.completed ? shared.iceBase?.obstacles ?? [] : []) {
       resolveBaseCollision(player.position, prevPos ?? player.position, bounds, radius);
     }
     const platforms = [shared.spaceBase?.userData.foundationBounds,
@@ -869,12 +913,7 @@ async function main() {
   await step2_city();
   await loadSpaceBase();
   await loadGardenColony();
-  try {
-    const location = JSON.parse(localStorage.getItem(ICE_BASE_STORAGE_KEY));
-    if (location) await placeIceBase(location);
-  } catch (error) {
-    console.warn("Saved ice base could not load:", error);
-  }
+  await placeIceBase(LEVEL_LAYOUT.ice);
 
   // step 3
   await step3_cityMovement();
@@ -908,6 +947,7 @@ function clearGameInput() {
   if (shared.keyboard) shared.keyboard._bl();
   _loopShared.move.set(0, 0, 0);
   _loopShared.hit = false;
+  shared.batonRequested = false;
 }
 
 function pauseGame() {
@@ -939,79 +979,6 @@ function navigateMenu(target) {
   gameMenu.render();
 }
 
-function moveBaseHere() {
-  if (session.screen !== "paused" || !shared.player || !shared.spaceBase) return;
-  try {
-    if (shared.colony) {
-      const currentSpawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, null).position;
-      const candidate = shared.spaceBase.userData.foundationBounds.clone().translate(new THREE.Vector3(
-        shared.player.position.x - currentSpawn.x, 0, shared.player.position.z - currentSpawn.z));
-      const garden = shared.colony.bounds;
-      if (candidate.max.x > garden.min.x && candidate.min.x < garden.max.x
-        && candidate.max.z > garden.min.z && candidate.min.z < garden.max.z) {
-        gameMenu.status("Choose a spot outside the garden colony to move the base.");
-        return;
-      }
-    }
-    const spawn = relocateSpaceBase(shared.spaceBase, shared.terrainGround,
-      shared.player.position.x, shared.player.position.z);
-    shared.player.position.copy(spawn);
-    shared.player.position.y += shared.playerFootOffset;
-    shared.player.rotation.y = Math.PI;
-    shared.playerState.velocity.set(0, 0, 0);
-    shared.playerState.grounded = true;
-    shared.playerState.groundY = spawn.y;
-    shared.look.yaw = 0;
-    _loopShared.prevPlayerPos = shared.player.position.clone();
-    _loopShared.smoothInited = false;
-    clearGameInput();
-    try {
-      localStorage.setItem(BASE_SPAWN_STORAGE_KEY, JSON.stringify({ x: spawn.x, z: spawn.z }));
-      localStorage.removeItem(PLAYER_SPAWN_STORAGE_KEY);
-      gameMenu.status("Base moved here. Spawn saved for this level.");
-    } catch {
-      gameMenu.status("Base moved here. Browser storage is unavailable, so this location will reset on reload.");
-    }
-  } catch (error) {
-    gameMenu.status(error.message);
-  }
-}
-
-function moveColonyHere() {
-  if (session.screen !== "paused" || !shared.player || !shared.colonyModels) return;
-  const location = { x: shared.player.position.x, z: shared.player.position.z };
-  let next;
-  try {
-    next = buildGardenColony({ ...shared.colonyModels, ground: shared.terrainGround,
-      baseBounds: new THREE.Box3().setFromObject(shared.spaceBase), location });
-  } catch (error) {
-    gameMenu.status(error.message);
-    return;
-  }
-  const previous = shared.colony;
-  for (let i = 0; i < next.plots.length; i++) next.plots[i].growth = previous.plots[i].growth;
-  next.update(0);
-  shared.colonyInteraction.destroy();
-  shared.scene.remove(previous.group);
-  previous.dispose();
-  shared.colony = next;
-  shared.scene.add(next.group);
-  shared.colonyInteraction = createSurveyInteraction(next);
-  shared.playerState.velocity.set(0, 0, 0);
-  shared.playerState.grounded = true;
-  shared.playerState.groundY = worldGroundHeight(location.x, location.z);
-  shared.player.position.y = shared.playerState.groundY + shared.playerFootOffset;
-  _loopShared.prevPlayerPos = shared.player.position.clone();
-  _loopShared.smoothInited = false;
-  clearGameInput();
-  try {
-    localStorage.setItem(COLONY_STORAGE_KEY, JSON.stringify(location));
-    gameMenu.status("Garden colony moved here and saved for this level.");
-  } catch {
-    gameMenu.status("Colony moved here. Browser storage is unavailable, so it will reset on reload.");
-  }
-}
-
 async function placeIceBase(location) {
   if (!iceModelsPromise) {
     const loader = new FBXLoader();
@@ -1024,29 +991,84 @@ async function placeIceBase(location) {
   const next = buildIceBase({ models, ground: shared.terrainGround, location,
     blockedBounds: [shared.spaceBase && new THREE.Box3().setFromObject(shared.spaceBase), shared.colony?.bounds] });
   if (shared.iceBase) shared.scene.remove(shared.iceBase.group);
+  next.group.visible = gardenMission.completed;
   shared.scene.add(next.group);
   shared.iceBase = next;
+  gardenMission.waterLocation = { ...next.location };
+  if (shared.colonyModels?.aliens.gray) {
+    shared.iceInteraction?.destroy();
+    if (shared.iceEncounter) { shared.scene.remove(shared.iceEncounter.group); shared.iceEncounter.dispose(); }
+    shared.iceEncounter = new IceEncounter({ source: shared.colonyModels.aliens.gray, ground: shared.terrainGround,
+      iceBase: next, onPlayerDown: recoverPlayerAtBase });
+    shared.iceEncounter.group.visible = gardenMission.completed;
+    shared.scene.add(shared.iceEncounter.group);
+    shared.iceInteraction = createIceInteraction(shared.iceEncounter, { onComplete: playIceAftermath, getTool: () => shared.selectedTool, onSelectTool: selectPlayerTool });
+  }
 }
 
-async function iceBaseHere() {
-  if (session.screen !== "paused" || !shared.player || placingIceBase) return;
-  placingIceBase = true;
-  const location = { x: shared.player.position.x, z: shared.player.position.z };
-  gameMenu.status("Building ice base...");
+async function recoverPlayerAtBase() {
+  if (session.paused || flags.missionTransition || gameMenu.transitioning) return;
+  flags.missionTransition = true;
+  clearGameInput();
   try {
-    await placeIceBase(location);
-    clearGameInput();
-    try {
-      localStorage.setItem(ICE_BASE_STORAGE_KEY, JSON.stringify(location));
-      gameMenu.status("Ice base placed here and saved. Resume to explore.");
-    } catch {
-      gameMenu.status("Ice base placed here. Browser storage is unavailable, so it will reset on reload.");
-    }
-  } catch (error) {
-    console.error("Ice base placement failed:", error);
-    gameMenu.status(error.message);
-  } finally {
-    placingIceBase = false;
+    await gameMenu.transitionToGame(() => {
+      const spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, LEVEL_LAYOUT.spawn);
+      shared.player.position.copy(spawn.position);
+      shared.player.position.y += shared.playerFootOffset;
+      shared.playerState.health = shared.playerState.maxHealth;
+      shared.playerState.velocity.set(0, 0, 0);
+      shared.playerState.grounded = true;
+      shared.playerState.support = shared.spaceBase.userData.foundationBounds;
+      shared.look.yaw = 0;
+      _loopShared.cameraMode = "third-person";
+      _loopShared.smoothInited = false;
+      _loopShared.prevPlayerPos = shared.player.position.clone();
+      shared.camera.position.set(shared.player.position.x, shared.player.position.y + 2.2, shared.player.position.z + shared.cameraDistance);
+      shared.camera.lookAt(shared.player.position.x, shared.player.position.y + 1.2, shared.player.position.z);
+      shared.iceInteraction?.leave();
+      shared.iceInteraction?.setVisible(false);
+    });
+  } catch (error) { console.error("[recovery] Could not recover at base:", error); }
+  finally { flags.missionTransition = false; clearGameInput(); }
+}
+
+function selectPlayerTool(tool) {
+  if (!gardenMission.completed || dialogueSession.busy || shared.iceAftermath || !["baton", "pickaxe"].includes(tool)) return;
+  shared.selectedTool = tool;
+  if (shared.baton) shared.baton.visible = tool === "baton";
+  if (shared.pickaxe) shared.pickaxe.visible = tool === "pickaxe";
+}
+
+async function playIceAftermath() {
+  if (shared.iceAftermath || flags.missionTransition || gameMenu.transitioning || shared.iceEncounter?.aftermathPlayed || !shared.iceEncounter?.lastAlien) return;
+  flags.missionTransition = true;
+  clearGameInput();
+  shared.iceInteraction.leave();
+  const cameraPosition = shared.camera.position.clone(), cameraRotation = shared.camera.quaternion.clone();
+  const playerVisible = shared.player.visible;
+  try {
+    await gameMenu.transitionToGame(() => {
+      shared.player.visible = false;
+      shared.iceAftermath = createIceAftermath({ alien: shared.iceEncounter.lastAlien, camera: shared.camera,
+        ground: shared.terrainGround, occluders: shared.iceEncounter.occluders, channel: dialogueSession,
+        reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches });
+      shared.iceEncounter.aftermathPlayed = true;
+    });
+    flags.missionTransition = false;
+    if (shared.iceAftermath) await shared.iceAftermath.finished;
+    flags.missionTransition = true;
+    await gameMenu.transitionToGame(() => {
+      shared.iceAftermath?.dispose(); shared.iceAftermath = null;
+      shared.player.visible = playerVisible;
+      shared.camera.position.copy(cameraPosition); shared.camera.quaternion.copy(cameraRotation);
+    });
+  } catch (error) { console.error("[ice] Alien scene failed:", error); }
+  finally {
+    shared.iceAftermath?.dispose(); shared.iceAftermath = null;
+    shared.player.visible = playerVisible;
+    shared.camera.position.copy(cameraPosition); shared.camera.quaternion.copy(cameraRotation);
+    _loopShared.smoothInited = false;
+    clearGameInput(); flags.missionTransition = false;
   }
 }
 
@@ -1056,7 +1078,7 @@ async function depositSurveySamples() {
   clearGameInput();
   try {
     await gameMenu.transitionToGame(() => {
-      const spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, null);
+      const spawn = getPlayerSpawn(shared.spaceBase, shared.terrainGround, LEVEL_LAYOUT.spawn);
       shared.player.position.copy(spawn.position);
       shared.player.position.y += shared.playerFootOffset;
       shared.player.rotation.y = spawn.yaw;
@@ -1075,12 +1097,9 @@ async function depositSurveySamples() {
         shared.player.position.z + shared.cameraDistance);
       shared.camera.lookAt(shared.player.position.x, shared.player.position.y + 1.2, shared.player.position.z);
       gardenMission.finishDeposit();
-      shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission);
+      if (shared.baton) shared.baton.visible = true;
+      shared.sampleStation.update(shared.spaceBase, shared.terrainGround, gardenMission, shared.colony?.bounds);
       shared.colonyInteraction.update(shared.player, shared.keyboard, shared.look.yaw);
-      try {
-        localStorage.setItem(PLAYER_SPAWN_STORAGE_KEY, JSON.stringify({ x: spawn.position.x, z: spawn.position.z,
-          yaw: spawn.yaw, cameraYaw: spawn.cameraYaw }));
-      } catch {}
     });
   } catch (error) {
     console.error("[survey] Sample deposit transition failed:", error);
@@ -1092,26 +1111,6 @@ async function depositSurveySamples() {
   }
 }
 
-function setSpawnHere() {
-  if (session.screen !== "paused" || !shared.player || !shared.spaceBase) return;
-  const saved = {
-    x: shared.player.position.x,
-    z: shared.player.position.z,
-    yaw: shared.player.rotation.y,
-    cameraYaw: shared.look.yaw,
-  };
-  if (!getPlayerSpawn(shared.spaceBase, shared.terrainGround, saved).custom) {
-    gameMenu.status("Step away from the building or terrain edge before setting the spawn.");
-    return;
-  }
-  try {
-    localStorage.setItem(PLAYER_SPAWN_STORAGE_KEY, JSON.stringify(saved));
-    gameMenu.status("Player spawn saved here for this level. The base stays in place.");
-  } catch {
-    gameMenu.status("The spawn could not be saved because browser storage is unavailable.");
-  }
-}
-
 const gameMenu = createGameMenu({
   session,
   clips: ASTRONAUT_CLIPS,
@@ -1119,10 +1118,6 @@ const gameMenu = createGameMenu({
   onPause: pauseGame,
   onNavigate: navigateMenu,
   onPreview: name => shared.stateMachine?.setPreview(name),
-  onMoveBase: moveBaseHere,
-  onSetSpawn: setSpawnHere,
-  onMoveColony: moveColonyHere,
-  onIceBase: iceBaseHere,
 });
 gameMenu.render({ focus: false });
 

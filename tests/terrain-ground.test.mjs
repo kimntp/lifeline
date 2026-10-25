@@ -4,8 +4,13 @@ import test from "node:test";
 import * as THREE from "three";
 import { TerrainGround, advanceGroundedActor, measureFootOffset } from "../src/terrain-ground.js";
 import { createTerrainSurround } from "../src/terrain-surround.js";
-import { findBaseSite } from "../src/space-base.js";
-import { findColonySite } from "../src/garden-colony.js";
+import { LEVEL_LAYOUT } from "../src/level-layout.js";
+import { createAlienLoader, prepareAlienModel } from "../src/alien-farmers.js";
+import { ICE_ASSETS, buildIceBase } from "../src/ice-base.js";
+import { createSampleStation } from "../src/sample-station.js";
+import { GardenMission } from "../src/garden-mission.js";
+import { findBaseSite, placeSpaceBase, getPlayerSpawn } from "../src/space-base.js";
+import { findColonySite, buildGardenColony } from "../src/garden-colony.js";
 
 // Decode the real GLB's positions, indices and node transforms without loading
 // browser-only textures. Compare the height index to Three.js ray intersections.
@@ -260,4 +265,38 @@ test("garden colony fits the actual hills beside a default or relocated base", (
     assert.ok(site.x + 11 <= base.min.x - 3 || site.x - 11 >= base.max.x + 3
       || site.z + 14 <= base.min.z - 3 || site.z - 14 >= base.max.z + 3);
   }
+});
+
+
+test("fixed level layout preserves the actual default world and a clear foundation spawn", () => {
+  function asset(file) {
+    const bytes = fs.readFileSync(new URL(`../public/assets/${file}.fbx`, import.meta.url));
+    return createAlienLoader().parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), "");
+  }
+  const baseModel = asset("Base");
+  const original = placeSpaceBase(baseModel.clone(true), ground);
+  const base = placeSpaceBase(baseModel, ground, LEVEL_LAYOUT.base);
+  assert.ok(base.userData.buildingBounds.min.distanceTo(original.userData.buildingBounds.min) < 1e-6);
+  assert.ok(base.userData.buildingBounds.max.distanceTo(original.userData.buildingBounds.max) < 1e-6);
+  const baseBounds = new THREE.Box3().setFromObject(base);
+  const originalGarden = findColonySite(ground, baseBounds);
+  assert.equal(LEVEL_LAYOUT.garden.x, originalGarden.x);
+  assert.equal(LEVEL_LAYOUT.garden.z, originalGarden.z);
+  const colony = buildGardenColony({ ground, baseBounds, location: LEVEL_LAYOUT.garden,
+    tomato: asset("Tomato Plant"), wheat: asset("Wheat Crop"), dome: asset("hab_dome"),
+    aliens: { gray: prepareAlienModel(asset("Alien_Low_Gray")), green: prepareAlienModel(asset("Alien_Low_Green")) } });
+  const ice = buildIceBase({ ground, location: LEVEL_LAYOUT.ice,
+    models: Object.fromEntries(ICE_ASSETS.map(name => [name, asset(name)])), blockedBounds: [baseBounds, colony.bounds] });
+  assert.equal(ice.bounds.intersectsBox(baseBounds), false);
+  assert.equal(ice.bounds.intersectsBox(colony.bounds), false);
+  const spawn = getPlayerSpawn(base, ground, LEVEL_LAYOUT.spawn);
+  const originalSpawn = getPlayerSpawn(original, ground, null);
+  assert.equal(spawn.custom, true, "Fixed spawn must not fall back to automatic placement");
+  assert.ok(spawn.position.distanceTo(originalSpawn.position) < 1e-6);
+  assert.equal(spawn.position.y, base.userData.foundationBounds.max.y);
+  assert.equal(colony.domeBounds.containsPoint(spawn.position), false);
+  const station = createSampleStation(); station.update(base, ground, new GardenMission(), colony.bounds);
+  assert.equal(station.bounds.intersectsBox(base.userData.foundationBounds), false);
+  assert.equal(station.bounds.intersectsBox(colony.bounds), false);
+  colony.dispose();
 });

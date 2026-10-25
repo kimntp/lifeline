@@ -29,7 +29,7 @@ export class GameSession {
   home() { this.screen = "home"; }
 }
 
-export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, onPreview, onMoveBase, onSetSpawn, onMoveColony, onIceBase }) {
+export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, onPreview }) {
   const root = document.createElement("div");
   root.id = "game-interface";
   root.innerHTML = `
@@ -50,10 +50,6 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
         <div id="menu-actions" class="menu-actions">
           <button id="play-button" class="menu-button primary" type="button" disabled>Loading world…</button>
           <button id="instructions-button" class="menu-button" type="button">Instructions</button>
-          <button id="move-base-button" class="menu-button" type="button" hidden>Move base here</button>
-          <button id="move-colony-button" class="menu-button" type="button" hidden>Move colony here</button>
-          <button id="ice-base-button" class="menu-button" type="button" hidden>Ice base here</button>
-          <button id="set-spawn-button" class="menu-button" type="button" hidden>Set spawn here</button>
           <button id="menu-mute-button" class="menu-button" type="button" aria-pressed="false" hidden>Mute audio</button>
           <button id="home-button" class="menu-button quiet" type="button" hidden>Home screen</button>
         </div>
@@ -64,6 +60,9 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
             <div><dt>Space</dt><dd>Jump</dd></div>
             <div><dt>Mouse / scroll</dt><dd>Look / zoom</dd></div>
             <div><dt>E</dt><dd>Talk / collect sample / deposit</dd></div>
+            <div><dt>1 / 2</dt><dd>Equip taser baton / pickaxe from inventory after waking at base</dd></div>
+            <div><dt>Left click · baton</dt><dd>One stun puts an alien to sleep. The last alien stays downed and talkable.</dd></div>
+            <div><dt>Left click · pickaxe</dt><dd>Face an ice block and strike it three times to mine the ice core. Move close; allow time between swings.</dd></div>
             <div><dt>Q</dt><dd>Open / close objectives</dd></div>
             <div><dt>H</dt><dd>Mining swing</dd></div>
             <div><dt>F</dt><dd>Toggle free camera</dd></div>
@@ -113,10 +112,6 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
   element("menu-mute-button").addEventListener("click", toggleMute);
   element("pause-button").addEventListener("click", onPause);
   element("play-button").addEventListener("click", onPlay);
-  element("move-base-button").addEventListener("click", onMoveBase);
-  element("move-colony-button").addEventListener("click", onMoveColony);
-  element("ice-base-button").addEventListener("click", onIceBase);
-  element("set-spawn-button").addEventListener("click", onSetSpawn);
   for (const [id, target] of [["instructions-button", "instructions"],
     ["home-button", "home"], ["menu-back", "back"]]) {
     element(id).addEventListener("click", () => onNavigate(target));
@@ -202,10 +197,6 @@ export function createGameMenu({ session, clips, onPlay, onPause, onNavigate, on
       element("play-button").disabled = !session.ready;
       element("play-button").textContent = !session.ready ? "Loading world…" : home ? (session.started ? "Continue exploring" : "Start exploring") : "Resume";
       element("instructions-button").hidden = !paused;
-      element("move-base-button").hidden = !paused;
-      element("move-colony-button").hidden = !paused;
-      element("set-spawn-button").hidden = !paused;
-      element("ice-base-button").hidden = !paused;
       element("home-button").hidden = !paused;
       element("instructions-panel").hidden = !instructions;
       element("animation-menu-panel").hidden = !animations;

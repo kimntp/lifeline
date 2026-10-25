@@ -25,8 +25,9 @@ test("actual ice assets form an outpost at the requested location with a clear c
   const clearCenter = new THREE.Box3(new THREE.Vector3(40, -Infinity, -37), new THREE.Vector3(44, Infinity, -33));
   for (const bounds of base.obstacles) assert.equal(bounds.intersectsBox(clearCenter), false);
   for (const piece of base.group.children) {
-    assert.equal(piece.position.y, ground.heightAt(location.x + piece.position.x, location.z + piece.position.z));
+    assert.ok(Math.abs(new THREE.Box3().setFromObject(piece).min.y - ground.heightAt(location.x + piece.position.x, location.z + piece.position.z)) < 1e-6);
   }
+  assert.ok(base.group.children.some(piece => Math.abs(piece.rotation.x) > 0.01));
   assert.ok(models.iceberg.parent === null, "source models stay reusable");
 });
 
